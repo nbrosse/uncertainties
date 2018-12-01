@@ -5,6 +5,15 @@ Cifar 100 Keras implementation from Andrew Kruger.
 References:
   https://github.com/andrewkruger/cifar100_CNN
   https://andrewkruger.github.io/projects/2017-08-05-keras-convolutional-neural-network-for-cifar-100
+  
+Epoch 199/200
+781/781 [==============================] - 59s 76ms/step - loss: 0.3937 - acc: 0.8855 - val_loss: 1.5991 - val_acc: 0.6735
+Epoch 200/200
+781/781 [==============================] - 59s 76ms/step - loss: 0.4005 - acc: 0.8824 - val_loss: 1.5043 - val_acc: 0.6738
+Saved trained model at /home/nbrosse/saved_models/andrewkruger_cifar100.h5
+10000/10000 [==============================] - 4s 447us/step
+Test loss: 1.504337809753418
+Test accuracy: 0.6738
 """
 
 
