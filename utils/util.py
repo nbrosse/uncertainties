@@ -13,7 +13,7 @@ def create_initial_outputs_dir():
   l2 = ['dropout', 'sgd_sgld']
   l3 = ['mnist', 'cifar10', 'cifar100']
   for x in itertools.product(l1, l2, l3):
-    path = 'outputs/{}/saved_weights_{}/{}/'.format(x[0], x[1], x[2])
+    path = 'outputs/{}/{}/{}/'.format(x[0], x[1], x[2])
     if not os.isdir(path):
       os.makedirs(path)
   if not os.isdir('saved_models'):

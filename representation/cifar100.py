@@ -7,13 +7,13 @@ References:
   https://andrewkruger.github.io/projects/2017-08-05-keras-convolutional-neural-network-for-cifar-100
   
 Epoch 199/200
-781/781 [==============================] - 59s 76ms/step - loss: 0.3937 - acc: 0.8855 - val_loss: 1.5991 - val_acc: 0.6735
+781/781 [==============================] - 18s 24ms/step - loss: 0.2300 - acc: 0.9361 - val_loss: 2.9163 - val_acc: 0.6228
 Epoch 200/200
-781/781 [==============================] - 59s 76ms/step - loss: 0.4005 - acc: 0.8824 - val_loss: 1.5043 - val_acc: 0.6738
-Saved trained model at /home/nbrosse/saved_models/andrewkruger_cifar100.h5
-10000/10000 [==============================] - 4s 447us/step
-Test loss: 1.504337809753418
-Test accuracy: 0.6738
+781/781 [==============================] - 18s 24ms/step - loss: 0.2328 - acc: 0.9375 - val_loss: 2.7466 - val_acc: 0.6308
+Saved trained model at saved_models/andrewkruger_cifar100.h5
+10000/10000 [==============================] - 2s 207us/step
+Test loss: 2.7465915702819825
+Test accuracy: 0.6308
 """
 
 #%% Imports
@@ -29,7 +29,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 
-import cifar
+import representation.cifar as cifar
 
 
 #%% Model 
@@ -68,7 +68,8 @@ def build_model(x_train, num_classes):
 
 #%% Train the model
   
-def main():
+def main(args):
+  del args
   num_classes = 100
   save_dir = 'saved_models'
   model_name = 'andrewkruger_cifar100.h5'
@@ -76,7 +77,7 @@ def main():
   data_augmentation = True
   batch_size = 64
   
-  (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
+  (x_train, y_train), (x_test, y_test) = cifar.input_cifar100()
   
   # initiate RMSprop optimizer
   opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)

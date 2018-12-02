@@ -10,15 +10,14 @@ To explore:
 -------------------------------------------------------------------------------
 CIFAR10
 -------------------------------------------------------------------------------
-It gets to 75% validation accuracy in 25 epochs, and 79% after 50 epochs.
-(it's still underfitting at that point, though).
-
+Epoch 99/100
+1562/1562 [==============================] - 20s 13ms/step - loss: 0.5287 - acc: 0.8220 - val_loss: 0.5170 - val_acc: 0.8249
 Epoch 100/100
-1562/1562 [==============================] - 37s 24ms/step - loss: 0.8097 - acc: 0.7331 - val_loss: 0.7752 - val_acc: 0.7420
-Saved trained model at /home/nbrosse/saved_models/keras_cifar10_trained_model.h5 
-10000/10000 [==============================] - 1s 131us/step
-Test loss: 0.7752337683200836
-Test accuracy: 0.742
+1562/1562 [==============================] - 19s 12ms/step - loss: 0.5266 - acc: 0.8230 - val_loss: 0.5465 - val_acc: 0.8158
+Saved trained model at saved_models/keras_cifar10_trained_model.h5
+10000/10000 [==============================] - 1s 128us/step
+Test loss: 0.5464685626983643
+Test accuracy: 0.8158
 -------------------------------------------------------------------------------
 CIFAR100
 -------------------------------------------------------------------------------
