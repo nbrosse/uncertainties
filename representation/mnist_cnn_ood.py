@@ -7,6 +7,7 @@ import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D
+from utils.class_sampling import class_sampling
 
 import numpy as np
 
@@ -89,7 +90,7 @@ def train_model(model, loss, optimizer, metrics, epochs, batch_size,
   print('Test accuracy:', score[1])
   model_path='saved_models/mnist_cnn.h5'
   model.save(model_path)
-  return model_path
+  return score
 
 #%% Train the model
 
@@ -107,10 +108,14 @@ def main(_):
   input_shape = (img_rows, img_cols, 1)
 
   (x_train, y_train), (x_test, y_test) = input_data()
+  x_train_res, y_train_res, classes_sampled, oos_classes=class_sampling(x_train, y_train, num_classes=5)
+  x_test_ood, y_test_ood, _, __=class_sampling(x_test, y_test, classes=oos_classes)
+  x_test_insample, y_test_insample,_, __=class_sampling(x_test, y_test, num_classes=5, classes=classes_sampled)
 
   model = build_model(input_shape, num_classes)
-  model_path = train_model(model, loss, optimizer, metrics, epochs,
-                           batch_size, x_train, y_train, x_test, y_test)
+  loss_insample = train_model(model, loss, optimizer, metrics, epochs, batch_size, x_train_res, y_train_res, x_test_insample, y_test_insample)
+  loss_ood=train_model(model, loss, optimizer, metrics, epochs, batch_size, x_train_res, y_train_res, x_test_ood, y_test_ood)
+
 
 if __name__ == '__main__':
   app.run(main)
