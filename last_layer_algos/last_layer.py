@@ -74,6 +74,8 @@ def sgd_sgld_last_layer(model, optimizer, epochs, batch_size,
     y_test: y_test
     thinning_interval: int, thinning interval between snapshots.
     path_weights: str, directory where to write snapshots of the weights
+  Returns:
+    hist: history (keras) object of the training 
   """
   # Compile and train model
   model.compile(optimizer=optimizer, 
@@ -86,18 +88,18 @@ def sgd_sgld_last_layer(model, optimizer, epochs, batch_size,
                                        save_weights_only=True, 
                                        period=thinning_interval)
 
-  model.fit(features_train, y_train,
-            batch_size=batch_size,
-            epochs=epochs,
-            verbose=1,
-            validation_data=(features_test, y_test),
-            callbacks=[mc])
+  hist = model.fit(features_train, y_train,
+                   batch_size=batch_size,
+                   epochs=epochs,
+                   verbose=1,
+                   validation_data=(features_test, y_test),
+                   callbacks=[mc])
   # Sanity check
   score = model.evaluate(features_test, y_test, verbose=0)
   print('Test loss:', score[0])
   print('Test accuracy:', score[1])
   
-  return path_weights
+  return hist
 
 def predict_sgd_sgld_last_layer(model, features_test, 
                                 num_classes, path_weights):

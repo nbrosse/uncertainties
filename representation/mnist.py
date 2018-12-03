@@ -45,7 +45,7 @@ def main(argv):
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
-  model.fit(x_train, y_train, epochs=20)
+  model.fit(x_train, y_train, epochs=2)
   
   model_path = 'saved_models/mnist.h5'
   model.save(model_path)
