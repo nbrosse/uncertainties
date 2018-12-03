@@ -58,9 +58,7 @@ def build_last_layer(model_path, features_shape, num_classes, p_dropout=None):
 def sgd_sgld_last_layer(model, optimizer, epochs, batch_size, 
                         features_train, y_train, features_test, y_test,
                         thinning_interval, path_weights):
-  """Train last layer model using SGD or SGLD.
-    submodel = last_layer.build_last_layer(model_path, features_shape, 10,
-                                         p_dropout=p_dropout)
+  """Train last layer model using SGD and SGLD.
   Weights snapshots every thinning_interval.
   
   Args:

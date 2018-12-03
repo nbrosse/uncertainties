@@ -6,7 +6,22 @@
 import os
 import itertools
 
+import numpy as np
+
 #%% Utility functions
+
+def cummean(arr, axis):
+  """Returns the cumulative mean of array along the axis.
+
+  Args:
+    arr: numpy array
+    axis: axis over which to compute the cumulative mean.
+  """
+  n = arr.shape[axis]
+  res = np.cumsum(arr, axis=axis)
+  res = np.apply_along_axis(lambda x: np.divide(x, np.arange(1, n+1)),
+                            axis=axis, arr=res)
+  return res
 
 def create_initial_outputs_dir():
   l1 = ['full_network', 'last_layer']

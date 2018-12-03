@@ -186,14 +186,14 @@ def main(args):
   num_samples = 10
   epochs = 10
   batch_size = 32
-  p_dropout = 0.5
+  p_dropout = 0.0000000001
   thinning_interval = 1
-  lr = 0.01
+  lr = 0.0001
   if FLAGS.dataset == 'mnist':
     launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr)
     launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples)
   else:
-    launch_cifar_sgd_sgld(epochs, batch_size, thinning_interval, lr)
+#    launch_cifar_sgd_sgld(epochs, batch_size, thinning_interval, lr)
     launch_cifar_dropout(epochs, batch_size, p_dropout, num_samples)
     
 if __name__ == '__main__':
