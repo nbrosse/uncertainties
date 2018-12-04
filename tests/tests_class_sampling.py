@@ -34,3 +34,8 @@ y_train = to_categorical(y_train, num_classes)
 y_test =to_categorical(y_test, num_classes)
 
 x_train_res, y_train_res, classes_sampled, oos_classes=class_sampling(x_train, y_train, 5)
+classes_sampled
+oos_classes
+
+x_train_res, y_train_res, classes_sampled, oos_classes=class_sampling(x_train, y_train, 5)
+x_train_res2, y_train_res2, classes_sampled2, oos_classes2=class_sampling(x_train, y_train, 5, classes=[0,1,2,3])
