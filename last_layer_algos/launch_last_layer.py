@@ -1,12 +1,8 @@
 #%% Imports
 
 import os
-from absl import app, flags
+from absl import app
 import pickle
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('dataset', None, 'mnist, cifar10 or cifar100')
 
 import numpy as np
 import keras
@@ -22,8 +18,15 @@ import utils.util as util
 
 def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
   output_dir = util.create_run_dir('outputs/last_layer/sgd_sgld/mnist')
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'thinning_interval': thinning_interval,
+                'lr': lr
+               }
+  # Save params
+  util.write_to_csv(output_dir, dic_params)
   (x_train, y_train), (x_test, y_test) = mnist.input_data()
-  model = mnist.build_model()
+  model = mnist.build_model(10)
   model_path = 'saved_models/mnist.h5'
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
@@ -59,10 +62,63 @@ def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
   print('End of computing probabilities')
 
 
-def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples):
-  output_dir = util.create_run_dir('outputs/last_layer/dropout/mnist')
+def launch_mnist_bootstrap(epochs, batch_size, num_samples, lr):
+  output_dir = util.create_run_dir('outputs/last_layer/bootstrap/mnist')
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'num_samples': num_samples,
+                'lr': lr
+               }
+  # Save params
+  util.write_to_csv(output_dir, dic_params)
   (x_train, y_train), (x_test, y_test) = mnist.input_data()
-  model = mnist.build_model()
+  model = mnist.build_model(10)
+  model_path = 'saved_models/mnist.h5'
+  features_train = last_layer.features_extraction(model, model_path, x_train)
+  features_test = last_layer.features_extraction(model, model_path, x_test)
+  features_shape = (features_train.shape[1],)
+  submodel = last_layer.build_last_layer(model_path, features_shape, 10)
+  submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
+                   loss='categorical_crossentropy', 
+                   metrics=['accuracy'])
+  # Create metrics dir
+  path_metrics = os.path.join(output_dir, 'metrics')
+  os.makedirs(path_metrics)
+  # Bootstrap
+  for i in np.arange(num_samples):
+    bootstrap_features_train, bootstrap_y_train = util.bootstrap(
+        features_train, y_train)
+    submodel = last_layer.bootstrap_last_layer(submodel, epochs, batch_size, 
+                                               bootstrap_features_train, 
+                                               bootstrap_y_train, 
+                                               features_test, y_test, 
+                                               model_path)
+    # Saving the model
+    submodel.save_weights(os.path.join(output_dir, 'weights_{}.h5'.format(i)))
+    print('End of boostrap {}'.format(i))
+  print('End of sampling.')
+  # Compute the probabilities
+  proba_tab = np.zeros((features_test.shape[0], y_test.shape[1], num_samples))
+  for i in np.arange(num_samples):
+    submodel.load_weights(os.path.join(output_dir, 'weights_{}.h5'.format(i)))
+    proba_tab[:, :, i] = submodel.predict(features_test)
+  # Save proba tab
+  np.save(os.path.join(path_metrics, 'p_bootstrap.npy'), proba_tab)
+  print('End of computing probabilities')
+
+
+def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr):
+  output_dir = util.create_run_dir('outputs/last_layer/dropout/mnist')
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'p_dropout': p_dropout,
+                'num_samples': num_samples,
+                'lr': lr
+               }
+  # Save params
+  util.write_to_csv(output_dir, dic_params)  
+  (x_train, y_train), (x_test, y_test) = mnist.input_data()
+  model = mnist.build_model(10)
   model_path = 'saved_models/mnist.h5'
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
@@ -73,7 +129,7 @@ def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples):
   path_metrics = os.path.join(output_dir, 'metrics')
   os.makedirs(path_metrics)
   # Training
-  submodel.compile(optimizer='sgd', 
+  submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
                    loss='categorical_crossentropy', 
                    metrics=['accuracy'])
   hist = submodel.fit(features_train, y_train,
@@ -82,7 +138,7 @@ def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples):
                       verbose=1,
                       validation_data=(features_test, y_test))
   # Saving the model
-  submodel.save(os.path.join(output_dir, 'weights.h5'))
+  submodel.save_weights(os.path.join(output_dir, 'weights.h5'))
   # Save history of the training
   with open(os.path.join(path_metrics, 'hist_dropout.pkl'), 'wb') as handle:
       pickle.dump(hist.history, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -96,11 +152,17 @@ def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples):
 
 #%% Cifar
   
-def launch_cifar_sgd_sgld(epochs, batch_size, thinning_interval, lr):
+def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
   output_dir = util.create_run_dir('outputs/last_layer/'
-                                   'sgd_sgld/{}'.format(FLAGS.dataset))
-  
-  if FLAGS.dataset == 'cifar10':
+                                   'sgd_sgld/{}'.format(dataset))
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'thinning_interval': thinning_interval,
+                'lr': lr
+               }
+  # Save params
+  util.write_to_csv(output_dir, dic_params)  
+  if dataset == 'cifar10':
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
     model = cifar.build_model(x_train, 10)
     model_path = 'saved_models/keras_cifar10_trained_model.h5'
@@ -146,11 +208,73 @@ def launch_cifar_sgd_sgld(epochs, batch_size, thinning_interval, lr):
   print('End of computing probabilities')
 
 
-def launch_cifar_dropout(epochs, batch_size, p_dropout, num_samples):
+def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
   output_dir = util.create_run_dir('outputs/last_layer/'
-                                   'dropout/{}'.format(FLAGS.dataset))
+                                   'bootstrap/{}'.format(dataset))
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'num_samples': num_samples,
+                'lr': lr
+               }
+  # Save params
+  util.write_to_csv(output_dir, dic_params)
+  if dataset == 'cifar10':
+    (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
+    model = cifar.build_model(x_train, 10)
+    model_path = 'saved_models/keras_cifar10_trained_model.h5'
+    num_classes = 10
+  else:
+    (x_train, y_train), (x_test, y_test) = cifar.input_cifar100()
+    model = cifar100.build_model(x_train, 100)
+    model_path = 'saved_models/andrewkruger_cifar100.h5'
+    num_classes = 100
+  features_train = last_layer.features_extraction(model, model_path, x_train)
+  features_test = last_layer.features_extraction(model, model_path, x_test)
+  features_shape = (features_train.shape[1],)
+  submodel = last_layer.build_last_layer(model_path, 
+                                         features_shape, num_classes)
+  submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
+                   loss='categorical_crossentropy', 
+                   metrics=['accuracy'])
+  # Create metrics dir
+  path_metrics = os.path.join(output_dir, 'metrics')
+  os.makedirs(path_metrics)
+  # Bootstrap
+  for i in np.arange(num_samples):
+    bootstrap_features_train, bootstrap_y_train = util.bootstrap(
+        features_train, y_train)
+    submodel = last_layer.bootstrap_last_layer(submodel, epochs, batch_size, 
+                                               bootstrap_features_train, 
+                                               bootstrap_y_train, 
+                                               features_test, y_test, 
+                                               model_path)
+    # Saving the model
+    submodel.save_weights(os.path.join(output_dir, 'weights_{}.h5'.format(i)))
+    print('End of boostrap {}'.format(i))
+  print('End of sampling.')
+  # Compute the probabilities
+  proba_tab = np.zeros((features_test.shape[0], y_test.shape[1], num_samples))
+  for i in np.arange(num_samples):
+    submodel.load_weights(os.path.join(output_dir, 'weights_{}.h5'.format(i)))
+    proba_tab[:, :, i] = submodel.predict(features_test)
+  # Save proba tab
+  np.save(os.path.join(path_metrics, 'p_bootstrap.npy'), proba_tab)
+  print('End of computing probabilities')
   
-  if FLAGS.dataset == 'cifar10':
+
+def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout, 
+                         num_samples, lr):
+  output_dir = util.create_run_dir('outputs/last_layer/'
+                                   'dropout/{}'.format(dataset))
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'p_dropout': p_dropout,
+                'num_samples': num_samples,
+                'lr': lr
+               }
+  # Save params
+  util.write_to_csv(output_dir, dic_params)   
+  if dataset == 'cifar10':
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
     model = cifar.build_model(x_train, 10)
     model_path = 'saved_models/keras_cifar10_trained_model.h5'
@@ -170,7 +294,7 @@ def launch_cifar_dropout(epochs, batch_size, p_dropout, num_samples):
   path_metrics = os.path.join(output_dir, 'metrics')
   os.makedirs(path_metrics)
   # Training
-  submodel.compile(optimizer='sgd', 
+  submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
                    loss='categorical_crossentropy', 
                    metrics=['accuracy'])
   hist = submodel.fit(features_train, y_train,
@@ -192,25 +316,28 @@ def launch_cifar_dropout(epochs, batch_size, p_dropout, num_samples):
   # Saving the probabilities
   np.save(os.path.join(path_metrics, 'p_dropout.npy'), proba_tab)
 
+
 #%% Sample
 
-def main(args):
-  del args # unused args
+def main(argv):
+  dataset = argv[1]  # argv[0] = name of the script file
   num_samples = 10
   epochs = 10
   batch_size = 32
   p_dropout = 0.5
   thinning_interval = 1
   lr = 0.01
-  if FLAGS.dataset == 'mnist':
+  if dataset == 'mnist':
     launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr)
-    launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples)
+    launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr)
+    launch_mnist_bootstrap(epochs, batch_size, num_samples, lr)
   else:
-    launch_cifar_sgd_sgld(epochs, batch_size, thinning_interval, lr)
-    launch_cifar_dropout(epochs, batch_size, p_dropout, num_samples)
+    launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr)
+    launch_cifar_dropout(dataset, epochs, batch_size, p_dropout, 
+                         num_samples, lr)
+    launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr)
     
 if __name__ == '__main__':
-  app.run(main)
+  app.run(main)  # mnist, cifar10, cifar100
   
-# FLAGS.__delattr__('dataset')
   

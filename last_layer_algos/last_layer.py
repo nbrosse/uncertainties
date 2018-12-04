@@ -99,6 +99,38 @@ def sgd_sgld_last_layer(model, optimizer, epochs, batch_size,
   
   return hist
 
+
+def bootstrap_last_layer(model, epochs, batch_size, 
+                         bootstrap_features_train, bootstrap_y_train, 
+                         features_test, y_test,
+                         model_path):
+  """Train last layer model on a boostrap training sample
+  
+  Args:
+    model: keras model.
+    epochs: epochs
+    batch_size: batch_size
+    bootstrap_features_train: features_train boostrapped of the last layer
+    bootstrap_y_train: y_train boostrapped of the last layer
+    features_test: features_test of the last layer
+    y_test: y_test
+    model_path: path to the model where initial weights are saved
+  """
+  # Load weights
+  model.load_weights(model_path, by_name=True)
+  # Train
+  model.fit(bootstrap_features_train, bootstrap_y_train,
+            batch_size=batch_size,
+            epochs=epochs,
+            verbose=1,
+            validation_data=(features_test, y_test))
+  # Sanity check
+  score = model.evaluate(features_test, y_test, verbose=0)
+  print('Test loss:', score[0])
+  print('Test accuracy:', score[1])
+  
+  return model
+
 def predict_sgd_sgld_last_layer(model, features_test, 
                                 num_classes, path_weights):
   """Predict probability distributions using saved weights.

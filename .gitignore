@@ -2,4 +2,5 @@ __pycache__/
 .ipynb_checkpoints/
 saved_models/
 outputs/
+notebooks/
 .idea
