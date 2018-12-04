@@ -12,7 +12,6 @@ from keras.models import Sequential
 from keras.layers import Dense, Flatten
 from utils.class_sampling import class_sampling
 
-
 #%% Define and train the model
 
 def build_model():
@@ -42,16 +41,16 @@ def mnist_ood(argv):
   model = build_model()
   (x_train, y_train), (x_test, y_test) = input_data()
   x_train_res, y_train_res, classes_sampled, oos_classes=class_sampling(x_train, y_train, num_classes=5)
-  x_test_ood, y_test_ood, _, __=class_sampling(x_test, y_test, classes=oos_classes)
+  x_test_ood, y_test_ood, _, __=class_sampling(x_test, y_test, 5, classes=oos_classes)
   x_test_insample, y_test_insample, _, __=class_sampling(x_test, y_test, num_classes=5, classes=classes_sampled)
 
   model.compile(optimizer='adam',
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
-  model.fit(x_train, y_train, epochs=20)
-  
-  model_path = 'saved_models/mnist.h5'
+  model.fit(x_train_res, y_train_res, epochs=2)
+  num_classes=len(classes_sampled)
+  model_path = 'saved_models/mnist_ood_{}cl.h5'.format(num_classes)
   model.save(model_path)
   print('Saved trained model at %s ' % model_path)
 
