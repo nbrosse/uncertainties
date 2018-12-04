@@ -43,53 +43,40 @@ def create_run_dir(path_dir):
   os.makedirs(path)
   return path
 
-def class_sampling(x_train, y_train, n_class, method='first'):
+def select_classes(y_train, n_class, method='first'):
   """Sample a sub-sample of the training class.
   
   Args:
-    x_train: x_train
     y_train: y_train, numpy array (n_test, num_classes), one-hot encoding.
     n_class: int, number of retained classes
     method: string, 'first', the first classes are retained for training,
             'last', the last, 'random', n_class are randomly chosen.
   Returns:
+    sec: a selection of indices among n_test corresponding to the selected 
+         classes
+    index: a boolean vector of length num_classes corresponding to the 
+           selected classes
   """
-  num_classes = y_train[0])
-  classes_sampled=list(np.zeros(num_classes))
+  num_classes = y_train.shape[1]
 
-  if num_classes > total_classes:
-      raise ValueError('the number of classes to sample is superior to the number of classes of the dataset')
-  if num_classes==total_classes:
-      print('all the classes are sampled')
-
-  selected_index=[]
-  if classes==None:
-      if method=='first':
-          classes_sampled=list(range(0,num_classes))
-          for index in range(y_train.shape[0]):
-              if np.sum(y_train[index][:num_classes])==1:
-                  selected_index.append(index)
-      elif method=='last':
-          classes_sampled=list(range(total_classes-num_classes, total_classes))
-          for index in range(y_train.shape[0]):
-              if np.sum(y_train[index][-num_classes:])==1:
-                  selected_index.append(index)
-      elif method=='random':
-          classes_sampled=list(np.random.choice(range(total_classes), num_classes, replace=False))
-          for index in range(y_train.shape[0]):
-              class_values=[y_train[index][cl] for cl in classes_sampled]
-              if np.sum(class_values)==1:
-                  selected_index.append(index)
+  if n_class > num_classes:
+    raise ValueError('the number of classes to sample from'
+                     'is superior to the number of classes of the dataset')
+  elif n_class == num_classes:
+    print('All the classes are sampled')
+    return np.arange(y_train.shape[0])
   else:
-      classes_sampled=classes
-      for index in range(y_train.shape[0]):
-          class_values=[y_train[index][cl] for cl in classes_sampled]
-          if np.sum(class_values)==1:
-              selected_index.append(index)
+    print('{} classes out of {} classes ' 
+          'are sampled.'.format(n_class, num_classes))
+  
+  index = np.zeros(num_classes, dtype=bool)
 
-  x_train_restricted=x_train[selected_index]
-  y_train_restricted=y_train[selected_index]
-  # re_index the sampled datasets?
-  oos_classes=[cl for cl in list(range(total_classes)) if not cl in classes_sampled]
-
-  return x_train_restricted, y_train_restricted, classes_sampled, oos_classes
+  if method == 'first':
+    index[:n_class] = 1
+  elif method == 'last':
+    index[-n_class:] = 1
+  else:
+    index[np.random.choice(num_classes, size=n_class, replace=False)] = 1
+    
+  sec = np.dot(y_train, index).astype(bool)  
+  return sec, index

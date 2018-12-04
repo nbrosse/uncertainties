@@ -2,13 +2,17 @@
 
 from __future__ import print_function
 from absl import app
+import shutil
+import os
 
+import numpy as np
 import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D
 
-import numpy as np
+import utils.util as util
+
 
 """
 Epoch 19/20
@@ -87,16 +91,23 @@ def train_model(model, loss, optimizer, metrics, epochs, batch_size,
   score = model.evaluate(x_test, y_test, verbose=0)
   print('Test loss:', score[0])
   print('Test accuracy:', score[1])
-  model_path='saved_models/mnist_cnn.h5'
-  model.save(model_path)
-  return model_path
+  return model
 
 #%% Train the model
 
-def main(_):
+def main(argv):
+  n_class = argv[0]
   batch_size = 128
   epochs = 20
-  num_classes = 10
+  (x_train, y_train), (x_test, y_test) = input_data()
+  
+  sec, index = util.select_classes(y_train, n_class)
+  
+  path_dir = 'saved_models/mnist_cnn_sec_{}'.format(n_class)
+  if os.path.isdir(path_dir):
+    shutil.rmtree(path_dir, ignore_errors=True)
+  os.makedirs(path_dir)
+  np.save(os.path.join(path_dir, 'index.npy'), index)
 
   metrics = ['accuracy']
   loss = keras.losses.categorical_crossentropy
@@ -105,12 +116,16 @@ def main(_):
   # input image dimensions
   img_rows, img_cols = 28, 28
   input_shape = (img_rows, img_cols, 1)
+  
+  sec_test = np.dot(y_test, index).astype(bool)
 
-  (x_train, y_train), (x_test, y_test) = input_data()
+  model = build_model(input_shape, n_class)
+  model = train_model(model, loss, optimizer, metrics, epochs,
+                      batch_size, x_train[sec, :], y_train[np.ix_(sec, index)], 
+                      x_test[sec_test, :], y_test[np.ix_(sec_test, index)])
 
-  model = build_model(input_shape, num_classes)
-  model_path = train_model(model, loss, optimizer, metrics, epochs,
-                           batch_size, x_train, y_train, x_test, y_test)
+  model_path = os.path.join(path_dir, 'mnist_cnn.h5')
+  model.save(model_path)
 
 if __name__ == '__main__':
-  app.run(main)
+  app.run(main, argv=[5])
