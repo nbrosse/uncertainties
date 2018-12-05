@@ -17,7 +17,7 @@ import utils.util as util
 #%% Launch functions
 
 def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/sgd_sgld/mnist')
+  output_dir = util.create_run_dir('outputs/last_layer/sgd_sgld/mnist', lr)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'thinning_interval': thinning_interval,
@@ -30,8 +30,7 @@ def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
   model_path = 'saved_models/mnist.h5'
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  features_shape = (features_train.shape[1],)
-  submodel = last_layer.build_last_layer(model_path, features_shape, 10)
+  submodel = last_layer.build_last_layer(model_path, features_train, 10)
   path_dic = {}
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
@@ -63,7 +62,7 @@ def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
 
 
 def launch_mnist_bootstrap(epochs, batch_size, num_samples, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/bootstrap/mnist')
+  output_dir = util.create_run_dir('outputs/last_layer/bootstrap/mnist', lr)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'num_samples': num_samples,
@@ -76,8 +75,7 @@ def launch_mnist_bootstrap(epochs, batch_size, num_samples, lr):
   model_path = 'saved_models/mnist.h5'
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  features_shape = (features_train.shape[1],)
-  submodel = last_layer.build_last_layer(model_path, features_shape, 10)
+  submodel = last_layer.build_last_layer(model_path, features_train, 10)
   submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
                    loss='categorical_crossentropy', 
                    metrics=['accuracy'])
@@ -108,7 +106,8 @@ def launch_mnist_bootstrap(epochs, batch_size, num_samples, lr):
 
 
 def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/dropout/mnist')
+  output_dir = util.create_run_dir('outputs/last_layer/dropout/mnist', lr, 
+                                   p_dropout=p_dropout)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'p_dropout': p_dropout,
@@ -122,8 +121,7 @@ def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr):
   model_path = 'saved_models/mnist.h5'
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  features_shape = (features_train.shape[1],)
-  submodel = last_layer.build_last_layer(model_path, features_shape, 10,
+  submodel = last_layer.build_last_layer(model_path, features_train, 10,
                                          p_dropout=p_dropout)
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
@@ -154,7 +152,7 @@ def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr):
   
 def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
   output_dir = util.create_run_dir('outputs/last_layer/'
-                                   'sgd_sgld/{}'.format(dataset))
+                                   'sgd_sgld/{}'.format(dataset), lr)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'thinning_interval': thinning_interval,
@@ -175,8 +173,7 @@ def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
   
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  features_shape = (features_train.shape[1],)
-  submodel = last_layer.build_last_layer(model_path, features_shape, num_classes)
+  submodel = last_layer.build_last_layer(model_path, features_train, num_classes)
   path_dic = {}
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
@@ -210,7 +207,7 @@ def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
 
 def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
   output_dir = util.create_run_dir('outputs/last_layer/'
-                                   'bootstrap/{}'.format(dataset))
+                                   'bootstrap/{}'.format(dataset), lr)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'num_samples': num_samples,
@@ -230,9 +227,8 @@ def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
     num_classes = 100
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  features_shape = (features_train.shape[1],)
   submodel = last_layer.build_last_layer(model_path, 
-                                         features_shape, num_classes)
+                                         features_train, num_classes)
   submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
                    loss='categorical_crossentropy', 
                    metrics=['accuracy'])
@@ -265,7 +261,8 @@ def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
 def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout, 
                          num_samples, lr):
   output_dir = util.create_run_dir('outputs/last_layer/'
-                                   'dropout/{}'.format(dataset))
+                                   'dropout/{}'.format(dataset), lr,
+                                   p_dropout=p_dropout)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'p_dropout': p_dropout,
@@ -287,8 +284,7 @@ def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout,
   
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  features_shape = (features_train.shape[1],)
-  submodel = last_layer.build_last_layer(model_path, features_shape, 
+  submodel = last_layer.build_last_layer(model_path, features_train, 
                                          num_classes, p_dropout=p_dropout)
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
@@ -321,12 +317,12 @@ def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout,
 
 def main(argv):
   dataset = argv[1]  # argv[0] = name of the script file
+  lr = float(argv[2]) # 0.01
+  p_dropout = float(argv[3]) # 0.5
   num_samples = 10
   epochs = 10
   batch_size = 32
-  p_dropout = 0.5
   thinning_interval = 1
-  lr = 0.01
   if dataset == 'mnist':
     launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr)
     launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr)

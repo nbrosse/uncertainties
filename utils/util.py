@@ -4,6 +4,7 @@
 #%% Imports
 
 import os
+import shutil
 import csv
 import itertools
 
@@ -52,12 +53,14 @@ def create_initial_outputs_dir():
     os.makedirs('saved_models')
 
 
-def create_run_dir(path_dir):
-  files = os.listdir(path_dir)
-  if not files:
-    path = os.path.join(path_dir, 'run_0')
+def create_run_dir(path_dir, lr, p_dropout=None):
+  if p_dropout is None:
+    path = os.path.join(path_dir, 'run_lr_{}'.format(lr))
   else:
-    path = os.path.join(path_dir, 'run_' + str(len(files)))
+    path = os.path.join(path_dir, 'run_lr_{}_p_{}'.format(lr, p_dropout))
+  if os.path.isdir(path):
+    print('Suppression of old directory with same parameters')
+    shutil.rmtree(path, ignore_errors=True)
   os.makedirs(path)
   return path
 

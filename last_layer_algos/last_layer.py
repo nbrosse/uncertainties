@@ -32,26 +32,32 @@ def features_extraction(model, model_path, input_data):
   return features
 
 
-def build_last_layer(model_path, features_shape, num_classes, p_dropout=None):
+def build_last_layer(model_path, features_train, num_classes, p_dropout=None):
   """Build the last layer keras model.
   
   Args:
     model_path: path to the full saved model.
-    features_shape: shape of the features.
+    features_train: features of the trainig set.
     num_classes: int, number of classes.
     p_dropout: float between 0 and 1. Fraction of the input units to drop.
   Returns:
     submodel: last layer model.
   """
+  n = features_train.shape[0]
+  features_shape = (features_train.shape[1],)
   if p_dropout is not None:
     x = Input(shape=features_shape, name='ll_input')
     y = PermaDropout(p_dropout, name='ll_dropout')(x)
-    y = Dense(num_classes, activation='softmax', name='ll_dense')(y)
+    y = Dense(num_classes, activation='softmax', name='ll_dense',
+              kernel_regularizer=keras.regularizers.l2(1./n),
+              bias_regularizer=keras.regularizers.l2(1./n))(y)
     model = Model(inputs=x, outputs=y)
   else:
     model = Sequential()
     model.add(Dense(num_classes, activation='softmax', 
-                    input_shape=features_shape, name='ll_dense'))
+                    input_shape=features_shape, name='ll_dense',
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
   model.load_weights(model_path, by_name=True)
   return model
 

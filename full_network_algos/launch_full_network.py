@@ -19,7 +19,7 @@ import utils.util as util
 def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
   output_dir = util.create_run_dir('outputs/full_network/sgd_sgld/mnist')
   (x_train, y_train), (x_test, y_test) = mnist.input_data()
-  model = mnist.build_model()
+  model = mnist.build_model(10)
   model_path = 'saved_models/mnist.h5'
   model.load_weights(model_path, by_name=True)
   path_dic = {}
