@@ -1,6 +1,8 @@
 __pycache__/
 .ipynb_checkpoints/
 saved_models/
+saved_models_ood/
 outputs/
+outputs_ood/
 notebooks/
 .idea

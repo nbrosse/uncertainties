@@ -39,18 +39,18 @@ def write_to_csv(output_dir, dic):
          writer.writerow([key, value])
 
    
-def create_initial_outputs_dir():
+def create_initial_outputs_dir(base_name='outputs_ood'):
   l1 = ['full_network', 'last_layer']
   l2 = ['dropout', 'sgd_sgld', 'bootstrap']
   l3 = ['mnist', 'cifar10', 'cifar100']
   for x in itertools.product(l1, l2, l3):
-    path = 'outputs/{}/{}/{}/'.format(x[0], x[1], x[2])
+    path = '{}/{}/{}/{}/'.format(base_name, x[0], x[1], x[2])
     if not os.path.isdir(path):
       os.makedirs(path)
-  if not os.path.isdir('outputs/one_point_estimates'):
-    os.makedirs('outputs/one_point_estimates')
-  if not os.path.isdir('saved_models'):
-    os.makedirs('saved_models')
+  if not os.path.isdir('{}/one_point_estimates'.format(base_name)):
+    os.makedirs('{}/one_point_estimates'.format(base_name))
+#  if not os.path.isdir('saved_models'):
+#    os.makedirs('saved_models')
 
 
 def create_run_dir(path_dir, lr, p_dropout=None):

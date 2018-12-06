@@ -34,13 +34,9 @@ Test accuracy: 0.4403
 
 from __future__ import print_function
 import os
-from absl import app, flags
+from absl import app
 
-FLAGS = flags.FLAGS
-
-flags.DEFINE_boolean('use_cifar10', None, 
-                     'use cifar10 True or cifar100 False')
-
+import numpy as np
 import keras
 
 from keras.datasets import cifar10, cifar100
@@ -48,6 +44,8 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D
+
+import utils.util as util
 
 #%% Model and data
 
@@ -73,7 +71,6 @@ def input_cifar100():
   x_train /= 255
   x_test /= 255
   return (x_train, y_train), (x_test, y_test)
-
 
 
 def build_model(x_train, num_classes):
@@ -102,21 +99,27 @@ def build_model(x_train, num_classes):
 
 #%% Train the model
 
-def main(args):
-  del args # unused args
+def main(argv):
+  n_class = argv[0]
   batch_size = 32
-  if FLAGS.use_cifar10:
-    num_classes = 10
-    model_name = 'keras_cifar10_trained_model.h5'
-    (x_train, y_train), (x_test, y_test) = input_cifar10()
-  else:
-    num_classes = 100
-    model_name = 'keras_cifar100_trained_model.h5'
-    (x_train, y_train), (x_test, y_test) = input_cifar100()
+  model_name = 'keras_cifar10_trained_model.h5'
+  (x_train, y_train), (x_test, y_test) = input_cifar10()
   epochs = 100
   data_augmentation = True
-  model = build_model(x_train, num_classes)
 
+  sec, index = util.select_classes(y_train, n_class)
+  sec_test = np.dot(y_test, index).astype(bool)
+  
+  path_dir = 'saved_models_ood/cifar10_sec_{}'.format(n_class)
+  
+  np.save(os.path.join(path_dir, 'index.npy'), index)
+  x_train = x_train[sec, :]
+  x_test = x_test[sec_test, :]
+  y_train = y_train[np.ix_(sec, index)]
+  y_test = y_test[np.ix_(sec_test, index)]
+  
+  model = build_model(x_train, n_class)
+  
   # initiate RMSprop optimizer
   opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
   
@@ -178,7 +181,7 @@ def main(args):
                         validation_data=(x_test, y_test),
                         workers=4)
 
-  model_path = os.path.join('saved_models', model_name)
+  model_path = os.path.join(path_dir, model_name)
   model.save(model_path)
   print('Saved trained model at %s ' % model_path)
 
@@ -188,4 +191,4 @@ def main(args):
   print('Test accuracy:', scores[1])
   
 if __name__ == '__main__':
-  app.run(main)
+  app.run(main, argv=[5])
