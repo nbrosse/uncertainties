@@ -221,10 +221,10 @@ def launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr):
   np.save(os.path.join(path_metrics, 'p_dropout_in.npy'), proba_tab_in)
   np.save(os.path.join(path_metrics, 'p_dropout_out.npy'), proba_tab_out)
 
-#%% Cifar - TODO
+#%% Cifar
   
 def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/'
+  output_dir = util.create_run_dir('outputs_ood/last_layer/'
                                    'sgd_sgld/{}'.format(dataset), lr)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
@@ -235,18 +235,34 @@ def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
   util.write_to_csv(output_dir, dic_params)  
   if dataset == 'cifar10':
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
-    model = cifar.build_model(x_train, 10)
-    model_path = 'saved_models/keras_cifar10_trained_model.h5'
-    num_classes = 10
+    index_path = 'saved_models_ood/cifar10_sec_5/index.npy'
+    index = np.load(index_path)
+    n_class = np.sum(index)
+    model = cifar.build_model(x_train, n_class)
+    model_path = 'saved_models_ood/cifar10_sec_5/keras_cifar10_trained_model.h5'
   else:
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar100()
-    model = cifar100.build_model(x_train, 100)
-    model_path = 'saved_models/andrewkruger_cifar100.h5'
-    num_classes = 100
+    index_path = 'saved_models_ood/cifar100_sec_50/index.npy'
+    index = np.load(index_path)
+    n_class = np.sum(index)
+    model = cifar100.build_model(x_train, n_class)
+    model_path = 'saved_models_ood/cifar100_sec_50/andrewkruger_cifar100.h5'
+  
+  indices_test_in = np.dot(y_test, index).astype(bool)
+  indices_train_in = np.dot(y_train, index).astype(bool)
   
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  submodel = last_layer.build_last_layer(model_path, features_train, num_classes)
+  
+  features_train_in = features_train[indices_train_in, :]
+  features_test_in = features_test[indices_test_in, :]
+  y_train_in = y_train[np.ix_(indices_train_in, index)]
+  y_test_in = y_test[np.ix_(indices_test_in, index)]
+  
+  features_test_out = features_test[~indices_test_in, :] 
+  
+  submodel = last_layer.build_last_layer(model_path, features_train_in, 
+                                         n_class)
   path_dic = {}
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
@@ -258,28 +274,36 @@ def launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr):
     path_weights = os.path.join(output_dir, opt)
     os.makedirs(path_weights)
     hist = last_layer.sgd_sgld_last_layer(submodel, optimizer, epochs, 
-                                          batch_size, features_train, 
-                                          y_train, features_test, 
-                                          y_test, thinning_interval, 
+                                          batch_size, features_train_in, 
+                                          y_train_in, features_test_in, 
+                                          y_test_in, thinning_interval, 
                                           path_weights)
     # Save history of the training
     with open(os.path.join(path_metrics, 
                            'hist_{}.pkl'.format(opt)), 'wb') as handle:
       pickle.dump(hist.history, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    path_dic[opt] = path_weights    
+    path_dic[opt] = path_weights
     print('End of sampling for %s' % opt)
   print('End of sampling.')
   # Compute the probabilities
   for opt in ['sgd', 'sgld']:
-    proba_tab = last_layer.predict_sgd_sgld_last_layer(submodel, features_test,
-                                                       num_classes, 
+    proba_tab_in = last_layer.predict_sgd_sgld_last_layer(submodel, 
+                                                       features_test_in,
+                                                       n_class, 
                                                        path_dic[opt])
-    np.save(os.path.join(path_metrics, 'p_{}.npy'.format(opt)), proba_tab)
+    proba_tab_out = last_layer.predict_sgd_sgld_last_layer(submodel, 
+                                                       features_test_out,
+                                                       n_class, 
+                                                       path_dic[opt])    
+    np.save(os.path.join(path_metrics, 'p_{}_in.npy'.format(opt)), 
+            proba_tab_in)
+    np.save(os.path.join(path_metrics, 'p_{}_out.npy'.format(opt)), 
+            proba_tab_out)
   print('End of computing probabilities')
 
 
 def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/'
+  output_dir = util.create_run_dir('outputs_ood/last_layer/'
                                    'bootstrap/{}'.format(dataset), lr)
   dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
@@ -290,18 +314,35 @@ def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
   util.write_to_csv(output_dir, dic_params)
   if dataset == 'cifar10':
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
-    model = cifar.build_model(x_train, 10)
-    model_path = 'saved_models/keras_cifar10_trained_model.h5'
-    num_classes = 10
+    index_path = 'saved_models_ood/cifar10_sec_5/index.npy'
+    index = np.load(index_path)
+    n_class = np.sum(index)
+    model = cifar.build_model(x_train, n_class)
+    model_path = 'saved_models_ood/cifar10_sec_5/keras_cifar10_trained_model.h5'
   else:
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar100()
-    model = cifar100.build_model(x_train, 100)
-    model_path = 'saved_models/andrewkruger_cifar100.h5'
-    num_classes = 100
+    index_path = 'saved_models_ood/cifar100_sec_50/index.npy'
+    index = np.load(index_path)
+    n_class = np.sum(index)
+    model = cifar100.build_model(x_train, n_class)
+    model_path = 'saved_models_ood/cifar100_sec_50/andrewkruger_cifar100.h5'
+    
+  indices_test_in = np.dot(y_test, index).astype(bool)
+  indices_train_in = np.dot(y_train, index).astype(bool)
+  
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  submodel = last_layer.build_last_layer(model_path, 
-                                         features_train, num_classes)
+  
+  features_train_in = features_train[indices_train_in, :]
+  features_test_in = features_test[indices_test_in, :]
+  y_train_in = y_train[np.ix_(indices_train_in, index)]
+  y_test_in = y_test[np.ix_(indices_test_in, index)]
+  
+  features_test_out = features_test[~indices_test_in, :] 
+
+  submodel = last_layer.build_last_layer(model_path, features_train_in, 
+                                         n_class)  
+  
   submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
                    loss='categorical_crossentropy', 
                    metrics=['accuracy'])
@@ -310,30 +351,33 @@ def launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr):
   os.makedirs(path_metrics)
   # Bootstrap
   for i in np.arange(num_samples):
-    bootstrap_features_train, bootstrap_y_train = util.bootstrap(
-        features_train, y_train)
+    bootstrap_features_train_in, bootstrap_y_train_in = util.bootstrap(
+        features_train_in, y_train_in)
     submodel = last_layer.bootstrap_last_layer(submodel, epochs, batch_size, 
-                                               bootstrap_features_train, 
-                                               bootstrap_y_train, 
-                                               features_test, y_test, 
+                                               bootstrap_features_train_in, 
+                                               bootstrap_y_train_in, 
+                                               features_test_in, y_test_in, 
                                                model_path)
     # Saving the model
     submodel.save_weights(os.path.join(output_dir, 'weights_{}.h5'.format(i)))
     print('End of boostrap {}'.format(i))
   print('End of sampling.')
   # Compute the probabilities
-  proba_tab = np.zeros((features_test.shape[0], y_test.shape[1], num_samples))
+  proba_tab_in = np.zeros((features_test_in.shape[0], n_class, num_samples))
+  proba_tab_out = np.zeros((features_test_out.shape[0], n_class, num_samples))
   for i in np.arange(num_samples):
     submodel.load_weights(os.path.join(output_dir, 'weights_{}.h5'.format(i)))
-    proba_tab[:, :, i] = submodel.predict(features_test)
+    proba_tab_in[:, :, i] = submodel.predict(features_test_in)
+    proba_tab_out[:, :, i] = submodel.predict(features_test_out)
   # Save proba tab
-  np.save(os.path.join(path_metrics, 'p_bootstrap.npy'), proba_tab)
+  np.save(os.path.join(path_metrics, 'p_bootstrap_in.npy'), proba_tab_in)
+  np.save(os.path.join(path_metrics, 'p_bootstrap_out.npy'), proba_tab_out)
   print('End of computing probabilities')
   
 
 def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout, 
                          num_samples, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/'
+  output_dir = util.create_run_dir('outputs_ood/last_layer/'
                                    'dropout/{}'.format(dataset), lr,
                                    p_dropout=p_dropout)
   dic_params = {'epochs': epochs,
@@ -346,19 +390,34 @@ def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout,
   util.write_to_csv(output_dir, dic_params)   
   if dataset == 'cifar10':
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar10()
-    model = cifar.build_model(x_train, 10)
-    model_path = 'saved_models/keras_cifar10_trained_model.h5'
-    num_classes = 10
+    index_path = 'saved_models_ood/cifar10_sec_5/index.npy'
+    index = np.load(index_path)
+    n_class = np.sum(index)
+    model = cifar.build_model(x_train, n_class)
+    model_path = 'saved_models_ood/cifar10_sec_5/keras_cifar10_trained_model.h5'
   else:
     (x_train, y_train), (x_test, y_test) = cifar.input_cifar100()
-    model = cifar100.build_model(x_train, 100)
-    model_path = 'saved_models/andrewkruger_cifar100.h5'
-    num_classes = 100
+    index_path = 'saved_models_ood/cifar100_sec_50/index.npy'
+    index = np.load(index_path)
+    n_class = np.sum(index)
+    model = cifar100.build_model(x_train, n_class)
+    model_path = 'saved_models_ood/cifar100_sec_50/andrewkruger_cifar100.h5'
+  
+  indices_test_in = np.dot(y_test, index).astype(bool)
+  indices_train_in = np.dot(y_train, index).astype(bool)
   
   features_train = last_layer.features_extraction(model, model_path, x_train)
   features_test = last_layer.features_extraction(model, model_path, x_test)
-  submodel = last_layer.build_last_layer(model_path, features_train, 
-                                         num_classes, p_dropout=p_dropout)
+  
+  features_train_in = features_train[indices_train_in, :]
+  features_test_in = features_test[indices_test_in, :]
+  y_train_in = y_train[np.ix_(indices_train_in, index)]
+  y_test_in = y_test[np.ix_(indices_test_in, index)]
+  
+  features_test_out = features_test[~indices_test_in, :] 
+  
+  submodel = last_layer.build_last_layer(model_path, features_train_in, 
+                                         n_class, p_dropout=p_dropout)
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
   os.makedirs(path_metrics)
@@ -366,25 +425,29 @@ def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout,
   submodel.compile(optimizer=keras.optimizers.SGD(lr=lr), 
                    loss='categorical_crossentropy', 
                    metrics=['accuracy'])
-  hist = submodel.fit(features_train, y_train,
+  hist = submodel.fit(features_train_in, y_train_in,
                       batch_size=batch_size,
                       epochs=epochs,
                       verbose=1,
-                      validation_data=(features_test, y_test))
+                      validation_data=(features_test_in, y_test_in))
   # Saving the model
-  submodel.save(os.path.join(output_dir, 'weights.h5'))
+  submodel.save_weights(os.path.join(output_dir, 'weights.h5'))
   # Save history of the training
   with open(os.path.join(path_metrics, 'hist_dropout.pkl'), 'wb') as handle:
-      pickle.dump(hist.history, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+      pickle.dump(hist.history, handle, protocol=pickle.HIGHEST_PROTOCOL)
   # Sampling
-  proba_tab = np.zeros(shape=(features_test.shape[0], num_classes, 
-                              num_samples))
-  for index in np.arange(num_samples):
-    proba = submodel.predict(features_test)
-    proba_tab[:, :, index] = proba
+  proba_tab_in = np.zeros(shape=(features_test_in.shape[0], n_class, 
+                                 num_samples))
+  proba_tab_out = np.zeros(shape=(features_test_out.shape[0], n_class, 
+                                  num_samples))  
+  for i in np.arange(num_samples):
+    proba_in = submodel.predict(features_test_in)
+    proba_out = submodel.predict(features_test_out)
+    proba_tab_in[:, :, i] = proba_in
+    proba_tab_out[:, :, i] = proba_out
   # Saving the probabilities
-  np.save(os.path.join(path_metrics, 'p_dropout.npy'), proba_tab)
-
+  np.save(os.path.join(path_metrics, 'p_dropout_in.npy'), proba_tab_in)
+  np.save(os.path.join(path_metrics, 'p_dropout_out.npy'), proba_tab_out)
 
 #%% Sample
 
