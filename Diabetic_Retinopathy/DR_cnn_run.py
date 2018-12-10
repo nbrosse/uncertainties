@@ -58,7 +58,7 @@ def main(argv):
   # training parameters
   batch_size = 32
   epochs = 20
-  opt = RMSprop()
+  opt = RMSprop(lr=0.0001, decay=1e-6)
 
   model.compile(loss='categorical_crossentropy',
                 optimizer=opt,
