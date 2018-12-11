@@ -69,11 +69,11 @@ def main(argv):
                                               batch_size=batch_size),
                       epochs=epochs,
                       steps_per_epoch=X_train.shape[0] // batch_size,
-                      validation_data=(X_test, y_test))
+                      validation_data=(X_val, y_val))
 
   # save the model
   model_path = base_image_dir
-  model_name = 'DR_categorical_%03d_%s.h5' % epochs, method
+  model_name = 'DR_categorical_%03d_%s.h5' % (epochs, method)
   model_path = os.path.join(model_path, model_name)
   model.save(model_path)
   print('Saved trained model at %s ' % model_path)
