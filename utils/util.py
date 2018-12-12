@@ -8,6 +8,10 @@ import shutil
 import csv
 
 import numpy as np
+from utils.dropout_layer import PermaDropout
+from keras.layers import Input, Dense
+from keras.models import Sequential, Model
+import keras
 
 #%% Utility functions
 
@@ -88,8 +92,6 @@ def select_classes(y_train, n_class, method='first'):
     method: string, 'first', the first classes are retained for training,
             'last', the last, 'random', n_class are randomly chosen.
   Returns:
-    sec: a selection of indices among n_test corresponding to the selected 
-         classes
     index: a boolean vector of length num_classes corresponding to the 
            selected classes
   """
@@ -100,7 +102,7 @@ def select_classes(y_train, n_class, method='first'):
                      'is superior to the number of classes of the dataset')
   elif n_class == num_classes:
     print('All the classes are sampled')
-    return np.arange(y_train.shape[0]), np.ones(num_classes, dtype=bool)
+    return np.ones(num_classes, dtype=bool)
   else:
     print('{} classes out of {} classes ' 
           'are sampled.'.format(n_class, num_classes))
@@ -114,5 +116,4 @@ def select_classes(y_train, n_class, method='first'):
   else:
     index[np.random.choice(num_classes, size=n_class, replace=False)] = 1
     
-  sec = np.dot(y_train, index).astype(bool)  
-  return sec, index
+  return index
