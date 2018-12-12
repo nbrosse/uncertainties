@@ -14,6 +14,10 @@ import representation.cifar as cifar
 import representation.cifar100 as cifar100
 import utils.util as util
 
+#%% Training
+
+
+
 #%% Launch functions
 
 def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):

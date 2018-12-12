@@ -20,6 +20,8 @@ losses in
 [0.04282997509721845, 0.9916326133489005]
 """
 
+NUM_CLASSES = 10
+
 #%% Define and train the model
 
 def build_model(num_classes):
@@ -42,11 +44,12 @@ def input_data():
 def main(argv):
   # batch_size = 32
   n_class = argv[0]
-  model = build_model(n_class)
   (x_train, y_train), (x_test, y_test) = input_data()
-  sec, index = util.select_classes(y_train, n_class)
-  
-  path_dir = 'saved_models/mnist_sec_{}'.format(n_class)
+  model = build_model(n_class)
+  if n_class < NUM_CLASSES:
+    method = argv[1]
+    sec, index = util.select_classes(y_train, n_class, method=method)
+    path_dir = 'saved_models/mnist_{}_{}'.format(method, n_class)
   if os.path.isdir(path_dir):
     shutil.rmtree(path_dir, ignore_errors=True)
   os.makedirs(path_dir)
@@ -70,3 +73,20 @@ def main(argv):
 
 if __name__ == '__main__':
   app.run(main, argv=[5])
+
+
+def features_extraction(model, model_path, input_data):
+  """Extract the features from the last layer.
+  
+  Args: 
+    model: full keras model.
+    model_path: path to the full saved model.
+    input_data: input data for the features.
+  Returns:
+    features: features corresponding to the input data.
+  """
+  submodel = Model(inputs=model.input, 
+                   outputs=model.get_layer('features_layer').output)
+  submodel.load_weights(model_path, by_name=True)
+  features = submodel.predict(input_data)
+  return features

@@ -7,30 +7,34 @@ import pickle
 import numpy as np
 import keras
 
-import last_layer_algos.last_layer as last_layer
 import utils.sgld as sgld
-import representation.mnist as mnist
-import representation.cifar as cifar
-import representation.cifar100 as cifar100
 import utils.util as util
+
+import itertools
 
 #%% Launch functions
 
-def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
-  output_dir = util.create_run_dir('outputs/last_layer/sgd_sgld/mnist', lr)
-  dic_params = {'epochs': epochs,
-                'batch_size': batch_size,
-                'thinning_interval': thinning_interval,
-                'lr': lr
-               }
-  # Save params
+hparams = {'dataset': 'mnist',
+           'algorithm': 'sgd_sgld',
+           'num_classes': 10,
+           'epochs': 10,
+           'thinning_interval': 1,
+           'batch_size': 32,
+           'lr': 0.01,
+           'num_samples': 10,
+           'p_dropout': 0.5
+          }
+
+dataset = hparams['dataset']
+
+saved_model_dir = 'saved_models/{}'.format(dataset)
+
+def launch(hparams):
+  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
   util.write_to_csv(output_dir, dic_params)
-  (x_train, y_train), (x_test, y_test) = mnist.input_data()
-  model = mnist.build_model(10)
-  model_path = 'saved_models/mnist.h5'
-  features_train = last_layer.features_extraction(model, model_path, x_train)
-  features_test = last_layer.features_extraction(model, model_path, x_test)
-  submodel = last_layer.build_last_layer(model_path, features_train, 10)
+  (features_train, y_train), (features_test, y_test) = input_data(hparams['dataset'])
+  model = util.build_last_layer(features_train, hparams['num_classes'])
+  model.load_weights('saved_models/{}/last_layer_submodel.h5'.format(dataset))
   path_dic = {}
   # Create metrics dir
   path_metrics = os.path.join(output_dir, 'metrics')
@@ -46,6 +50,50 @@ def launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr):
                                           y_train, features_test, 
                                           y_test, thinning_interval, 
                                           path_weights)
+
+
+
+
+
+
+def sgd_sgld(hparams, output_dir):
+  
+  
+  
+  
+  dic_params = {'epochs': epochs,
+                'batch_size': batch_size,
+                'thinning_interval': thinning_interval,
+                'lr': lr
+               }
+  # Save params
+  model = mnist.build_model(10)
+  model_path = 'saved_models/mnist.h5'
+  features_train = last_layer.features_extraction(model, model_path, x_train)
+  features_test = last_layer.features_extraction(model, model_path, x_test)
+    
+      # Compile and train model
+  model.compile(optimizer=optimizer, 
+                loss='categorical_crossentropy', 
+                metrics=['accuracy'])
+  # Saving after every N batches
+  # https://stackoverflow.com/questions/43794995/python-keras-saving-model-weights-after-every-n-batches
+  mc = keras.callbacks.ModelCheckpoint(os.path.join(path_weights, 
+                                                    'weights{epoch:03d}.h5'),
+                                       save_weights_only=True, 
+                                       period=thinning_interval)
+
+  hist = model.fit(features_train, y_train,
+                   batch_size=batch_size,
+                   epochs=epochs,
+                   verbose=1,
+                   validation_data=(features_test, y_test),
+                   callbacks=[mc])
+  # Sanity check
+  score = model.evaluate(features_test, y_test, verbose=0)
+  print('Test loss:', score[0])
+  print('Test accuracy:', score[1])
+    
     # Save history of the training
     with open(os.path.join(path_metrics, 
                            'hist_{}.pkl'.format(opt)), 'wb') as handle:
@@ -316,22 +364,26 @@ def launch_cifar_dropout(dataset, epochs, batch_size, p_dropout,
 #%% Sample
 
 def main(argv):
-  dataset = argv[1]  # argv[0] = name of the script file
-  lr = float(argv[2]) # 0.01
-  p_dropout = float(argv[3]) # 0.5
+#  dataset = argv[1]  # argv[0] = name of the script file
+#  lr = float(argv[2]) # 0.01
+  lr = 0.01
+#  p_dropout = float(argv[3]) # 0.5
   num_samples = 10
   epochs = 10
   batch_size = 32
   thinning_interval = 1
-  if dataset == 'mnist':
-    launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr)
-    launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr)
-    launch_mnist_bootstrap(epochs, batch_size, num_samples, lr)
-  else:
-    launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr)
-    launch_cifar_dropout(dataset, epochs, batch_size, p_dropout, 
-                         num_samples, lr)
-    launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr)
+  
+  for dataset, p_dropout in itertools.product(['mnist', 'cifar10', 'cifar100'], 
+                                              [0.1, 0.2, 0.3, 0.4]): 
+    if dataset == 'mnist':
+#      launch_mnist_sgd_sgld(epochs, batch_size, thinning_interval, lr)
+      launch_mnist_dropout(epochs, batch_size, p_dropout, num_samples, lr)
+#      launch_mnist_bootstrap(epochs, batch_size, num_samples, lr)
+    else:
+#      launch_cifar_sgd_sgld(dataset, epochs, batch_size, thinning_interval, lr)
+      launch_cifar_dropout(dataset, epochs, batch_size, p_dropout, 
+                           num_samples, lr)
+#      launch_cifar_bootstrap(dataset, epochs, batch_size, num_samples, lr)
     
 if __name__ == '__main__':
   app.run(main)  # mnist, cifar10, cifar100

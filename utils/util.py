@@ -6,11 +6,29 @@
 import os
 import shutil
 import csv
-import itertools
 
 import numpy as np
 
 #%% Utility functions
+
+def write_to_csv(output_dir, dic):
+  with open(os.path.join(output_dir, 'params.csv'), 'w') as csv_file:
+      writer = csv.writer(csv_file)
+      for key, value in dic.items():
+         writer.writerow([key, value])
+
+
+def create_run_dir(path_dir, lr, p_dropout=None):
+  if p_dropout is None:
+    path = os.path.join(path_dir, 'run_lr_{}'.format(lr))
+  else:
+    path = os.path.join(path_dir, 'run_lr_{}_p_{}'.format(lr, p_dropout))
+  if os.path.isdir(path):
+    print('Suppression of old directory with same parameters')
+    shutil.rmtree(path, ignore_errors=True)
+  os.makedirs(path)
+  return path
+
 
 def cummean(arr, axis):
   """Returns the cumulative mean of array along the axis.
@@ -26,43 +44,39 @@ def cummean(arr, axis):
   return res
 
 
+def build_last_layer(features_train, num_classes, 
+                     p_dropout=None):
+  """Build the last layer keras model.
+  
+  Args:
+    features_train: features of the trainig set.
+    num_classes: int, number of classes.
+    p_dropout: float between 0 and 1. Fraction of the input units to drop.
+  Returns:
+    submodel: last layer model.
+  """
+  n = features_train.shape[0]
+  features_shape = (features_train.shape[1],)
+  if p_dropout is not None:
+    x = Input(shape=features_shape, name='ll_input')
+    y = PermaDropout(p_dropout, name='ll_dropout')(x)
+    y = Dense(num_classes, activation='softmax', name='ll_dense',
+              kernel_regularizer=keras.regularizers.l2(1./n),
+              bias_regularizer=keras.regularizers.l2(1./n))(y)
+    model = Model(inputs=x, outputs=y)
+  else:
+    model = Sequential()
+    model.add(Dense(num_classes, activation='softmax', 
+                    input_shape=features_shape, name='ll_dense',
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
+  return model
+
+
 def bootstrap(x_train, y_train):
   n = x_train.shape[0]
   index = np.random.choice(n, n, replace=True)
   return x_train[index, :], y_train[index, :]
-
-
-def write_to_csv(output_dir, dic):
-  with open(os.path.join(output_dir, 'params.csv'), 'w') as csv_file:
-      writer = csv.writer(csv_file)
-      for key, value in dic.items():
-         writer.writerow([key, value])
-
-   
-def create_initial_outputs_dir(base_name='outputs_ood'):
-  l1 = ['full_network', 'last_layer']
-  l2 = ['dropout', 'sgd_sgld', 'bootstrap']
-  l3 = ['mnist', 'cifar10', 'cifar100']
-  for x in itertools.product(l1, l2, l3):
-    path = '{}/{}/{}/{}/'.format(base_name, x[0], x[1], x[2])
-    if not os.path.isdir(path):
-      os.makedirs(path)
-  if not os.path.isdir('{}/one_point_estimates'.format(base_name)):
-    os.makedirs('{}/one_point_estimates'.format(base_name))
-#  if not os.path.isdir('saved_models'):
-#    os.makedirs('saved_models')
-
-
-def create_run_dir(path_dir, lr, p_dropout=None):
-  if p_dropout is None:
-    path = os.path.join(path_dir, 'run_lr_{}'.format(lr))
-  else:
-    path = os.path.join(path_dir, 'run_lr_{}_p_{}'.format(lr, p_dropout))
-  if os.path.isdir(path):
-    print('Suppression of old directory with same parameters')
-    shutil.rmtree(path, ignore_errors=True)
-  os.makedirs(path)
-  return path
 
 
 def select_classes(y_train, n_class, method='first'):

@@ -15,51 +15,10 @@ import numpy as np
 
 #%% Features, last layer model
 
-def features_extraction(model, model_path, input_data):
-  """Extract the features from the last layer.
-  
-  Args: 
-    model: full keras model.
-    model_path: path to the full saved model.
-    input_data: input data for the features.
-  Returns:
-    features: features corresponding to the input data.
-  """
-  submodel = Model(inputs=model.input, 
-                   outputs=model.get_layer('features_layer').output)
-  submodel.load_weights(model_path, by_name=True)
-  features = submodel.predict(input_data)
-  return features
 
 
-def build_last_layer(model_path, features_train, num_classes, p_dropout=None):
-  """Build the last layer keras model.
-  
-  Args:
-    model_path: path to the full saved model.
-    features_train: features of the trainig set.
-    num_classes: int, number of classes.
-    p_dropout: float between 0 and 1. Fraction of the input units to drop.
-  Returns:
-    submodel: last layer model.
-  """
-  n = features_train.shape[0]
-  features_shape = (features_train.shape[1],)
-  if p_dropout is not None:
-    x = Input(shape=features_shape, name='ll_input')
-    y = PermaDropout(p_dropout, name='ll_dropout')(x)
-    y = Dense(num_classes, activation='softmax', name='ll_dense',
-              kernel_regularizer=keras.regularizers.l2(1./n),
-              bias_regularizer=keras.regularizers.l2(1./n))(y)
-    model = Model(inputs=x, outputs=y)
-  else:
-    model = Sequential()
-    model.add(Dense(num_classes, activation='softmax', 
-                    input_shape=features_shape, name='ll_dense',
-                    kernel_regularizer=keras.regularizers.l2(1./n),
-                    bias_regularizer=keras.regularizers.l2(1./n)))
-  model.load_weights(model_path, by_name=True)
-  return model
+
+
 
 def sgd_sgld_last_layer(model, optimizer, epochs, batch_size, 
                         features_train, y_train, features_test, y_test,
@@ -81,27 +40,7 @@ def sgd_sgld_last_layer(model, optimizer, epochs, batch_size,
   Returns:
     hist: history (keras) object of the training 
   """
-  # Compile and train model
-  model.compile(optimizer=optimizer, 
-                loss='categorical_crossentropy', 
-                metrics=['accuracy'])
-  # Saving after every N batches
-  # https://stackoverflow.com/questions/43794995/python-keras-saving-model-weights-after-every-n-batches
-  mc = keras.callbacks.ModelCheckpoint(os.path.join(path_weights, 
-                                                    'weights{epoch:03d}.h5'),
-                                       save_weights_only=True, 
-                                       period=thinning_interval)
 
-  hist = model.fit(features_train, y_train,
-                   batch_size=batch_size,
-                   epochs=epochs,
-                   verbose=1,
-                   validation_data=(features_test, y_test),
-                   callbacks=[mc])
-  # Sanity check
-  score = model.evaluate(features_test, y_test, verbose=0)
-  print('Test loss:', score[0])
-  print('Test accuracy:', score[1])
   
   return hist
 
