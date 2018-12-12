@@ -14,6 +14,18 @@ import itertools
 
 #%% Launch functions
 
+"""
+dataset: mnist, cifar10, cifar100, diabetic, imagenet, 
+         mnist_{first, last, random}_{n_class}, etc.
+algorithm: sgd_sgld, bootstrap, dropout
+epochs: 10, 100, 1000, 10000
+thinning_interval: 1
+num_samples: epochs // thinning_interval
+batch_size: 32, 64, 128
+lr: 0.1, 0.05, 0.01, 0.005, 0.001
+p_dropout: 0.2, 0.3, 0.4, 0.5 
+"""
+
 hparams = {'dataset': 'mnist',
            'algorithm': 'sgd_sgld',
            'num_classes': 10,
