@@ -16,17 +16,27 @@ import keras
 #%% Utility functions
 
 def write_to_csv(output_dir, dic):
-  with open(os.path.join(output_dir, 'params.csv'), 'w') as csv_file:
+  with open(output_dir, 'w') as csv_file:
       writer = csv.writer(csv_file)
       for key, value in dic.items():
          writer.writerow([key, value])
 
+# to decide for p_dropout: if you put None or 0 for non dropout_algo
+def create_run_dir(path_dir, hparams):
+  data=hparams['dataset']
+  algo= hparams['algorithm']
+  cl=hparams['num_classes']
+  ep=hparams['epochs']
+  thInt=hparams['thinning_interval']
+  lr=hparams['lr']
+  samples=hparams['num_samples']
+  p_drop=hparams['p_dropout']
 
-def create_run_dir(path_dir, lr, p_dropout=None):
-  if p_dropout is None:
-    path = os.path.join(path_dir, 'run_lr_{}'.format(lr))
-  else:
-    path = os.path.join(path_dir, 'run_lr_{}_p_{}'.format(lr, p_dropout))
+  path_name='{}_{}_cl{}_ep{}_lr{}_samples{}'.format(data,algo,cl,ep,lr,samples)
+  if algo=='dropout':
+    path_name=path_name+'_pdrop%02d' % p_drop
+  path = os.path.join(path_dir, path_name)
+
   if os.path.isdir(path):
     print('Suppression of old directory with same parameters')
     shutil.rmtree(path, ignore_errors=True)
@@ -117,3 +127,4 @@ def select_classes(y_train, n_class, method='first'):
     index[np.random.choice(num_classes, size=n_class, replace=False)] = 1
     
   return index
+

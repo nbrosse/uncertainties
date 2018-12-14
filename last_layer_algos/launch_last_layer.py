@@ -69,11 +69,7 @@ def launch(hparams):
 
 
 def sgd_sgld(hparams, output_dir):
-  
-  
-  
-  
-  dic_params = {'epochs': epochs,
+  #dic_params = {'epochs': epochs,
                 'batch_size': batch_size,
                 'thinning_interval': thinning_interval,
                 'lr': lr

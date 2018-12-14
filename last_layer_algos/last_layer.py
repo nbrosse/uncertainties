@@ -17,9 +17,6 @@ import numpy as np
 
 
 
-
-
-
 def sgd_sgld_last_layer(model, optimizer, epochs, batch_size, 
                         features_train, y_train, features_test, y_test,
                         thinning_interval, path_weights):
