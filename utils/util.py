@@ -16,29 +16,40 @@ import keras
 #%% Utility functions
 
 def write_to_csv(output_dir, dic):
+  """Write a python dic to csv."""
   with open(output_dir, 'w') as csv_file:
       writer = csv.writer(csv_file)
       for key, value in dic.items():
          writer.writerow([key, value])
 
-# to decide for p_dropout: if you put None or 0 for non dropout_algo
-def create_run_dir(path_dir, hparams):
-  data=hparams['dataset']
-  algo= hparams['algorithm']
-  cl=hparams['num_classes']
-  ep=hparams['epochs']
-  thInt=hparams['thinning_interval']
-  lr=hparams['lr']
-  samples=hparams['num_samples']
-  p_drop=hparams['p_dropout']
 
-  path_name='{}_{}_cl{}_ep{}_lr{}_samples{}'.format(data,algo,cl,ep,lr,samples)
-  if algo=='dropout':
-    path_name=path_name+'_pdrop%02d' % p_drop
+def create_run_dir(path_dir, hparams):
+  dataset = hparams['dataset']
+  algorithm = hparams['algorithm']
+  epochs = hparams['epochs']
+  samples = hparams['samples']
+  lr = hparams['lr']
+  bs = hparams['batch_size']
+  p_dropout = hparams['p_dropout']
+  
+  if algorithm == 'sgdsgld':
+    path_name = '{}_{}_lr-{}_bs-{}_s-{}'.format(dataset, algorithm, 
+                 lr, bs, samples)
+  elif algorithm == 'bootstrap':
+    path_name = '{}_{}_ep-{}_lr-{}_bs-{}_s-{}'.format(dataset, algorithm, epochs, 
+                 lr, bs, samples)
+  elif algorithm == 'dropout':
+    path_name = '{}_{}_ep-{}_lr-{}_bs-{}_s-{}'.format(dataset, algorithm, epochs, 
+                 lr, bs, samples)
+    path_name = path_name + '_pdrop-{}'.format(p_dropout)
+  else:
+    raise ValueError('This algorithm is not supported')
+  
   path = os.path.join(path_dir, path_name)
 
   if os.path.isdir(path):
     print('Suppression of old directory with same parameters')
+    os.chmod(path, 0o777)
     shutil.rmtree(path, ignore_errors=True)
   os.makedirs(path)
   return path

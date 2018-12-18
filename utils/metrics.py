@@ -53,17 +53,17 @@ def compute_metrics(y, p_tab):
   risk_cov_softmax = res_aurc['risk_cov_softmax']
   risk_cov_q = res_aurc['risk_cov_q']
   
-  result_dic = {'acc': acc,
-                'bs': bs,
-                'p_mean': p_mean,
-                'p_std': p_std,
-                'neglog': neglog,
-                'ent': ent,
-                'cal': cal,
-                'q_tab': q_tab,
-                'ent_q': ent_q,
-                'mi': mi,
-                'risk_cov_std': risk_cov_std,
+  result_dic = {'acc': acc,  # n_samples
+                'bs': bs,  # n_samples
+                'p_mean': p_mean,  # (n_test, n_class)
+                'p_std': p_std,  # (n_test, n_class)
+                'neglog': neglog,  # n_samples
+                'ent': ent,  # (n_test, n_samples)
+                'cal': cal,  # reliability_diag, ece, mce
+                'q_tab': q_tab,  # (n_test, n_class) 
+                'ent_q': ent_q,  # n_test
+                'mi': mi,  # n_test
+                'risk_cov_std': risk_cov_std, # conf, risk_cov, aurc, eaurc
                 'risk_cov_softmax': risk_cov_softmax,
                 'risk_cov_q': risk_cov_q
                 }

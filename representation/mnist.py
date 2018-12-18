@@ -62,7 +62,7 @@ def main(argv):
   (x_train, y_train), (x_test, y_test) = input_data()
   model = build_model(n_class)
   index = util.select_classes(y_train, n_class, method=method)
-  path_dir = 'saved_models/mnist_{}_{}'.format(method, n_class)
+  path_dir = 'saved_models/mnist-{}-{}'.format(method, n_class)
   sec = np.dot(y_train, index).astype(bool)
   
   if os.path.isdir(path_dir):
@@ -77,7 +77,7 @@ def main(argv):
   
   model.fit(x_train[sec,:], y_train[np.ix_(sec, index)], epochs=20)
   model_path = os.path.join(path_dir, 'mnist.h5')
-  model.save(model_path)
+  model.save_weights(model_path)
   print('Saved trained model at %s ' % model_path)
   
   sec_test = np.dot(y_test, index).astype(bool)
