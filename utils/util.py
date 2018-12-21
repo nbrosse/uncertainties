@@ -35,6 +35,8 @@ def create_run_dir(path_dir, hparams):
   if algorithm == 'sgdsgld':
     path_name = '{}_{}_lr-{}_bs-{}_s-{}'.format(dataset, algorithm, 
                  lr, bs, samples)
+  elif algorithm == 'onepoint':
+    path_name = '{}_{}'.format(dataset, algorithm)
   elif algorithm == 'bootstrap':
     path_name = '{}_{}_ep-{}_lr-{}_bs-{}_s-{}'.format(dataset, algorithm, epochs, 
                  lr, bs, samples)

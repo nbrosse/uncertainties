@@ -19,12 +19,23 @@ def input_data(hparams):
   input_path = 'saved_models/{}'.format(hparams['dataset'])
   features = np.load(os.path.join(input_path, 'features.npz'))
   y = np.load(os.path.join(input_path, 'y.npz'))
-
+  
+  
+  ## The split is done on the training dataset
   features_train_in = features['features_train_in']
   y_train_in = y['y_train_in']
   features_val_in = features['features_val_in']
   y_val_in = y['y_val_in']
   features_val_out = features['features_val_out']
+  
+  # Added paragraph
+  features_train_in = np.vstack((features_train_in, features_val_in))
+  y_train_in = np.vstack((y_train_in, y_val_in))
+  
+  y_val_in = y['y_test_in']
+  features_val_out = features['features_test_out']
+  features_val_in = features['features_test_in']
+  # -----------
   
   if features_val_out.shape[0] == 0:
     features_val_out = None
@@ -33,6 +44,45 @@ def input_data(hparams):
   return (features_train_in, y_train_in), (features_val_in, 
          y_val_in), features_val_out
 
+def onepoint(hparams):
+  
+  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
+  
+  (features_train_in, y_train_in), (features_val_in, y_val_in), \
+    features_val_out = input_data(hparams)
+    
+  n_class = y_train_in.shape[1]
+  
+  model = util.build_last_layer(features_train_in, n_class)
+  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
+                             hparams['dataset'].split('-')[0])
+
+  model.load_weights(model_path, by_name=True)
+  
+  name_in = os.path.join(output_dir, 'p_in.h5')
+  file_in = h5py.File(name_in, 'a')
+  shape_in = (features_val_in.shape[0], n_class, 1)
+  proba_in = file_in.create_dataset('proba', 
+                                    shape_in,
+                                    # dtype='f2',
+                                    compression='gzip')
+  if features_val_out is not None:
+    name_out = os.path.join(output_dir, 'p_out.h5')
+    file_out = h5py.File(name_out, 'a')
+    shape_out = (features_val_out.shape[0], n_class, 1)
+    proba_out = file_out.create_dataset('proba', 
+                                        shape_out,
+                                        # dtype='f2',
+                                        compression='gzip') 
+
+  proba_in[:, :, 0] = model.predict(features_val_in)
+  if features_val_out is not None:
+    proba_out[:, :, 0] = model.predict(features_val_out)
+    
+  file_in.close()
+  if features_val_out is not None:
+    file_out.close()
+    
 
 def sgd_sgld(hparams):  
   
@@ -263,7 +313,7 @@ def dropout(hparams):
 
 def main(argv):
 #  del argv
-  algo = argv[1]
+#  algo = argv[1]
   
   # Hyperparameters
   """
@@ -276,88 +326,90 @@ def main(argv):
   p_dropout: 0.2, 0.3, 0.4, 0.5 
   """
   
-#  hparams = {'dataset': 'mnist-first-10',
-#           'algorithm': 'dropout',
-#           'epochs': 10,
-#           'batch_size': 32,
-#           'lr': 0.01,
-#           'p_dropout': 0.5,
-#           'samples': 10
-#          }
+  hparams = {'dataset': 'cifar100-first-100',
+             'algorithm': 'onepoint',
+             'epochs': 10,
+             'batch_size': 64,
+             'lr': 0.001,
+             'p_dropout': 0.5,
+             'samples': 1000
+            }
   
-  if algo == 'sgdsgld': 
-    # 30 sim
-    list_dataset = ['mnist-first-10']
-    list_algorithms = ['sgdsgld']
-    list_samples = [10, 100, 1000]
-    list_batch_size = [32, 64]
-    list_lr = [0.1, 0.05, 0.01, 0.005, 0.001]
+  onepoint(hparams)
   
-    list_epochs = [100]
-    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-  elif algo == 'dropout':
-    # 150
-    list_dataset = ['mnist-first-10']
-    list_algorithms = ['dropout']
-    list_samples = [10, 100, 1000]
-    list_batch_size = [32, 64]
-    list_lr = [0.1, 0.05, 0.01, 0.005, 0.001]
-  
-    list_epochs = [100]
-    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-  elif algo == 'bootstrap':
-    # 20
-    list_dataset = ['mnist-first-10']
-    list_algorithms = ['bootstrap']
-    list_samples = [10, 100]
-    list_batch_size = [32, 64]
-    list_lr = [0.1, 0.05, 0.01, 0.005, 0.001]
-  
-    list_epochs = [10]
-    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-  else:
-    raise ValueError('this algorithm is not supported')
-  
-  
-  
-  i = 0
-  def smartprint(i):
-    print('----------------------')
-    print('End of {} step'.format(i))
-    print('----------------------')
-  
-  for dataset, algorithm, samples, batch_size, lr in \
-    itertools.product(list_dataset, list_algorithms,  
-                      list_samples, list_batch_size, list_lr):
-  
-    hparams = {'dataset': dataset,
-               'algorithm': algorithm,
-               'epochs': 100,
-               'batch_size': batch_size,
-               'lr': lr,
-               'p_dropout': 0.5,
-               'samples': samples
-              }
-    
-    if algorithm == 'bootstrap':
-      for epochs in list_epochs:
-        hparams['epochs'] = epochs
-        bootstrap(hparams)
-        i += 1
-        smartprint(i)
-    elif algorithm == 'dropout':
-      for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
-        hparams['epochs'] = epochs
-        hparams['p_dropout'] = p_dropout
-        dropout(hparams)
-        i += 1
-        smartprint(i)
-    elif algorithm == 'sgdsgld':
-      sgd_sgld(hparams)
-      i += 1
-      smartprint(i)
-    else:
-      raise ValueError('this algorithm is not supported')
+#  if algo == 'sgdsgld': 
+#    # 15 sim
+#    list_dataset = ['cifar100-first-100']
+#    list_algorithms = ['sgdsgld']
+#    list_samples = [10, 100, 1000]
+#    list_batch_size = [128]
+#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
+#  
+#    list_epochs = [100]
+#    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
+#  elif algo == 'dropout':
+#    # 45
+#    list_dataset = ['cifar100-first-100']
+#    list_algorithms = ['dropout']
+#    list_samples = [10, 100, 1000]
+#    list_batch_size = [128]
+#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
+#  
+#    list_epochs = [100]
+#    list_p_dropout = [0.1, 0.3, 0.5]
+#  elif algo == 'bootstrap':
+#    # 10
+#    list_dataset = ['cifar100-first-100']
+#    list_algorithms = ['bootstrap']
+#    list_samples = [10, 100]
+#    list_batch_size = [128]
+#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
+#  
+#    list_epochs = [10]
+#    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
+#  else:
+#    raise ValueError('this algorithm is not supported')
+#  
+#  
+#  
+#  i = 0
+#  def smartprint(i):
+#    print('----------------------')
+#    print('End of {} step'.format(i))
+#    print('----------------------')
+#  
+#  for dataset, algorithm, samples, batch_size, lr in \
+#    itertools.product(list_dataset, list_algorithms,  
+#                      list_samples, list_batch_size, list_lr):
+#  
+#    hparams = {'dataset': dataset,
+#               'algorithm': algorithm,
+#               'epochs': 100,
+#               'batch_size': batch_size,
+#               'lr': lr,
+#               'p_dropout': 0.5,
+#               'samples': samples
+#              }
+#    
+#    if algorithm == 'bootstrap':
+#      for epochs in list_epochs:
+#        hparams['epochs'] = epochs
+#        bootstrap(hparams)
+#        i += 1
+#        smartprint(i)
+#    elif algorithm == 'dropout':
+#      for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
+#        hparams['epochs'] = epochs
+#        hparams['p_dropout'] = p_dropout
+#        dropout(hparams)
+#        i += 1
+#        smartprint(i)
+#    elif algorithm == 'sgdsgld':
+#      sgd_sgld(hparams)
+#      i += 1
+#      smartprint(i)
+#    else:
+#      raise ValueError('this algorithm is not supported')
     
 
     

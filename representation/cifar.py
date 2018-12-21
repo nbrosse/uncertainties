@@ -162,7 +162,7 @@ def whitening(x_train):
   x_train = (x_train - mean) / (std + 1e-7)
   return x_train, (mean, std)
 
-def normalize(self, x, mean, std):
+def normalize(x, mean, std):
   """Normalize inputs on the test or validation dataset.
   
   Args:
@@ -237,12 +237,13 @@ def main(argv):
   x_test = normalize(x_test, mean, std)
   model = build_model(n_class)
   index = util.select_classes(y_train, n_class, method=method)
-  path_dir = 'saved_models/{}_{}_{}'.format(dataset, method, n_class)
+  path_dir = 'saved_models/{}-{}-{}'.format(dataset, method, n_class)
   
   sec = np.dot(y_train, index).astype(bool)
   sec_test = np.dot(y_test, index).astype(bool)
   
   if os.path.isdir(path_dir):
+    os.chmod(path_dir, 0o777)
     shutil.rmtree(path_dir, ignore_errors=True)
   os.makedirs(path_dir)
   
@@ -255,6 +256,7 @@ def main(argv):
   model_path = os.path.join(path_dir, '{}.h5'.format(dataset))
   model.save_weights(model_path)
   print('Saved trained model at %s ' % model_path)
+  
   
 
   losses_in = model.evaluate(x_test[sec_test,:], 
@@ -306,5 +308,5 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  app.run(main, argv=[5, 'first', 'cifar10'])
+  app.run(main, argv=[100, 'first', 'cifar100'])
 
