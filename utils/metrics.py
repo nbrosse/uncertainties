@@ -21,13 +21,104 @@ from __future__ import division
 from __future__ import print_function
 
 import pickle
+from absl import app
 import os
+import h5py
+from psutil import virtual_memory
+
 import numpy as np
 import scipy.stats as spstats
 import utils.util as util
 
+mem = virtual_memory()
+MEM = mem.total / 40.0 # (2.0 * nb_cores) # max physical memory for us
+
 #%% functions to compute the metrics
 
+def metrics_from_h5file(y, h5file):
+  """Compute metrics from a (potentially very big) h5file.
+  
+  Args:
+    y: true y, one-hot encoding size (n_test, n_class)
+    h5file: path to the h5 file containing the tab of probabilities.
+  Returns:
+    result_dic: dict that contains the metrics.
+  """
+  memsize = os.path.getsize(h5file)
+  nb_chunks = int(memsize // MEM + 1) 
+  f = h5py.File(os.path.join(h5file), 'r')  # read mode
+  h5data = f['proba']
+  n_test, n_class, n_samples = h5data.shape
+  num_items_per_chunk = h5data.shape[0] // nb_chunks 
+  # number of chunks is equal to nb_chunks or nb_chunks + 1
+  if h5data.shape[0] % nb_chunks == 0:
+    num_chunks = nb_chunks # number of chunks is equal to nb_chunks
+  else:
+    num_chunks = nb_chunks + 1 # number of chunks is equal to nb_chunks + 1
+  print('----------------')
+  print('Reading file {} divided in {} chunks.'.format(h5file, num_chunks))
+  print('----------------')
+  p_mean, p_std, q_tab = [], [], []
+  acc = np.zeros((num_chunks, n_samples))
+  bs = np.zeros((num_chunks, n_samples))
+  neglog = np.zeros((num_chunks, n_samples))
+  ent, ent_q, mi = [], [], []
+  for i in np.arange(nb_chunks + 1):
+    if i < nb_chunks:
+      p_i = h5data[i*num_items_per_chunk:(i+1)*num_items_per_chunk, :, :]
+      y_i = y[i*num_items_per_chunk:(i+1)*num_items_per_chunk, :]
+    elif h5data.shape[0] % nb_chunks == 0:  # i == nb_chunks
+      # number of chunks is equal to nb_chunks
+      break
+    else:
+      # number of chunks is equal to nb_chunks + 1
+      p_i = h5data[i*num_items_per_chunk:, :, :]
+      y_i = y[i*num_items_per_chunk:, :]
+    res_dic = compute_metrics(y_i, p_i)
+    p_mean.append(res_dic['p_mean'])
+    p_std.append(res_dic['p_std'])
+    q_tab.append(res_dic['q_tab'])
+    acc[i, :] = res_dic['acc']
+    bs[i, :] = res_dic['bs']
+    neglog[i, :] = res_dic['neglog']
+    ent.append(res_dic['ent'])
+    ent_q.append(res_dic['ent_q'])
+    mi.append(res_dic['mi'])
+    
+  acc = np.mean(acc, axis=0)
+  bs = np.mean(bs, axis=0)
+  neglog = np.mean(neglog, axis=0)
+
+  p_mean = np.vstack(tuple(p_mean))
+  p_std = np.vstack(tuple(p_std))
+  q_tab = np.vstack(tuple(q_tab))
+  ent = np.concatenate(tuple(ent))
+  ent_q = np.concatenate(tuple(ent_q))
+  mi = np.concatenate(tuple(mi))
+  
+  cal = calibration(y, p_mean)
+  
+  risk_cov = aurc(y, p_mean, p_std, q_tab)
+  
+  result_dic = {}
+  
+  result_dic = {'acc': acc,  # n_samples
+              'bs': bs,  # n_samples
+              'p_mean': p_mean,  # (n_test, n_class)
+              'p_std': p_std,  # (n_test, n_class)
+              'neglog': neglog,  # n_samples
+              'ent': ent,  # (n_test, n_samples)
+              'cal': cal,  # reliability_diag, ece, mce
+              'q_tab': q_tab,  # (n_test, n_class) 
+              'ent_q': ent_q,  # n_test
+              'mi': mi,  # n_test
+              'risk_cov_std': risk_cov['risk_cov_std'], # conf, risk_cov, aurc, eaurc
+              'risk_cov_softmax': risk_cov['risk_cov_softmax'],
+              'risk_cov_q': risk_cov['risk_cov_q']
+              }
+  
+  f.close()
+  return result_dic
 
 def compute_metrics(y, p_tab):
   """Computation of the metrics.
@@ -71,16 +162,21 @@ def compute_metrics(y, p_tab):
   return result_dic
 
 
-def save_results(result_dic, path_dir):
+def save_results(result_dic, path_dir, dic_name=None):
   """Save the results using pickle.
   
   Args:
     result_dic: dictionary of the results, output of compute_metrics.
     path_dir: path to the directory where the results are saved.
+    dic_name: name of the pickle file
   """
-  with open(os.path.join(path_dir, 'metrics_dic.pkl'), 'wb') as handle:
+  if dic_name is None:
+    dic = 'metrics_dic.pkl'
+  else:
+    dic = dic_name
+  with open(os.path.join(path_dir, dic), 'wb') as handle:
     pickle.dump(result_dic, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
+      
 
 def aurc(y, p_mean, p_std, q_tab):
   """Compute the AURC, and other related metrics.
@@ -306,8 +402,41 @@ def calibration(y, p_mean, num_bins=10):
          'mce': mce}
   return cal
 
+#%% launch functions
+
+def main(argv):
+  del argv
+#  dataset = 'cifar100-first-100'
+  dataset = 'imagenet-first-1000'
+  # y
+#  npzfile = np.load('saved_models/{}/y.npz'.format(dataset))
+#  y = npzfile['y_test_in']
+  # y imagenet
+  y = np.load('saved_models/{}/y.npy'.format(dataset))
+  
+  # Paths to folders
+#  path_sgd_sgld = 'outputs/last_layer/{}_sgdsgld_lr-0.001_bs-128_s-1000'.format(dataset)
+#  path_dropout = 'outputs/last_layer/{}_dropout_ep-100_lr-0.005_bs-128_s-100_pdrop-0.5'.format(dataset)
+#  path_bootstrap = 'outputs/last_layer/{}_bootstrap_ep-10_lr-0.005_bs-128_s-10'.format(dataset)
+#  path_onepoint = 'outputs/last_layer/{}_onepoint'.format(dataset)
+#  path_sgd = 'outputs/last_layer/imagenet-first-1000_sgdsgld_lr-0.01_bs-512_s-100'
+  path = 'outputs/last_layer/imagenet-first-1000_dropout_ep-10_lr-0.01_bs-512_s-10_pdrop-0.1'
+  
+  # Paths to h5 files
+  p = os.path.join(path, 'p_in.h5')
+#  p_sgld = os.path.join(path_sgd_sgld, 'p_sgld_in.h5')
+#  p_dropout = os.path.join(path_dropout, 'p_in.h5')
+#  p_bootstrap = os.path.join(path_bootstrap, 'p_in.h5')
+#  p_onepoint = os.path.join(path_onepoint, 'p_in.h5')
+  
+  save_results(metrics_from_h5file(y, p), path)
+#  save_results(metrics_from_h5file(y, p_sgld), path_sgd_sgld, 'dic_sgld.pkl')
+#  save_results(metrics_from_h5file(y, p_dropout), path_dropout)
+#  save_results(metrics_from_h5file(y, p_bootstrap), path_bootstrap)
+#  save_results(metrics_from_h5file(y, p_onepoint), path_onepoint)
+  print('End')
 
 
-
-
+if __name__ == '__main__':
+  app.run(main)  # mnist, cifar10, cifar100
 

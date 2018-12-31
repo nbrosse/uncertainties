@@ -8,10 +8,6 @@ import shutil
 import csv
 
 import numpy as np
-from utils.dropout_layer import PermaDropout
-from keras.layers import Input, Dense
-from keras.models import Sequential, Model
-import keras
 
 #%% Utility functions
 
@@ -69,35 +65,6 @@ def cummean(arr, axis):
   res = np.apply_along_axis(lambda x: np.divide(x, np.arange(1, n+1)),
                             axis=axis, arr=res)
   return res
-
-
-def build_last_layer(features_train, num_classes, 
-                     p_dropout=None):
-  """Build the last layer keras model.
-  
-  Args:
-    features_train: features of the trainig set.
-    num_classes: int, number of classes.
-    p_dropout: float between 0 and 1. Fraction of the input units to drop.
-  Returns:
-    submodel: last layer model.
-  """
-  n = features_train.shape[0]
-  features_shape = (features_train.shape[1],)
-  if p_dropout is not None:
-    x = Input(shape=features_shape, name='ll_input')
-    y = PermaDropout(p_dropout, name='ll_dropout')(x)
-    y = Dense(num_classes, activation='softmax', name='ll_dense',
-              kernel_regularizer=keras.regularizers.l2(1./n),
-              bias_regularizer=keras.regularizers.l2(1./n))(y)
-    model = Model(inputs=x, outputs=y)
-  else:
-    model = Sequential()
-    model.add(Dense(num_classes, activation='softmax', 
-                    input_shape=features_shape, name='ll_dense',
-                    kernel_regularizer=keras.regularizers.l2(1./n),
-                    bias_regularizer=keras.regularizers.l2(1./n)))
-  return model
 
 
 def bootstrap(x_train, y_train):

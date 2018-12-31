@@ -7,12 +7,44 @@ import h5py
 
 import numpy as np
 import keras
+from keras.layers import Input, Dense
+from keras.models import Sequential, Model
 
 import utils.sgld as sgld
 import utils.util as util
+from utils.dropout_layer import PermaDropout
 
 
 #%% Algorithms
+
+def build_last_layer(features_train, num_classes, 
+                     p_dropout=None):
+  """Build the last layer keras model.
+  
+  Args:
+    features_train: features of the trainig set.
+    num_classes: int, number of classes.
+    p_dropout: float between 0 and 1. Fraction of the input units to drop.
+  Returns:
+    submodel: last layer model.
+  """
+  n = features_train.shape[0]
+  features_shape = (features_train.shape[1],)
+  if p_dropout is not None:
+    x = Input(shape=features_shape, name='ll_input')
+    y = PermaDropout(p_dropout, name='ll_dropout')(x)
+    y = Dense(num_classes, activation='softmax', name='ll_dense',
+              kernel_regularizer=keras.regularizers.l2(1./n),
+              bias_regularizer=keras.regularizers.l2(1./n))(y)
+    model = Model(inputs=x, outputs=y)
+  else:
+    model = Sequential()
+    model.add(Dense(num_classes, activation='softmax', 
+                    input_shape=features_shape, name='ll_dense',
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
+  return model
+
 
 def input_data(hparams):
   
@@ -20,22 +52,11 @@ def input_data(hparams):
   features = np.load(os.path.join(input_path, 'features.npz'))
   y = np.load(os.path.join(input_path, 'y.npz'))
   
-  
-  ## The split is done on the training dataset
   features_train_in = features['features_train_in']
   y_train_in = y['y_train_in']
-  features_val_in = features['features_val_in']
-  y_val_in = y['y_val_in']
-  features_val_out = features['features_val_out']
-  
-  # Added paragraph
-  features_train_in = np.vstack((features_train_in, features_val_in))
-  y_train_in = np.vstack((y_train_in, y_val_in))
-  
   y_val_in = y['y_test_in']
   features_val_out = features['features_test_out']
   features_val_in = features['features_test_in']
-  # -----------
   
   if features_val_out.shape[0] == 0:
     features_val_out = None
@@ -53,7 +74,7 @@ def onepoint(hparams):
     
   n_class = y_train_in.shape[1]
   
-  model = util.build_last_layer(features_train_in, n_class)
+  model = build_last_layer(features_train_in, n_class)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -82,7 +103,7 @@ def onepoint(hparams):
   file_in.close()
   if features_val_out is not None:
     file_out.close()
-    
+
 
 def sgd_sgld(hparams):  
   
@@ -93,7 +114,6 @@ def sgd_sgld(hparams):
     features_val_out = input_data(hparams)
     
   n_class = y_train_in.shape[1]
-#  epochs = hparams['epochs']
   samples = hparams['samples']
   lr = hparams['lr']
   batch_size = hparams['batch_size']
@@ -152,7 +172,7 @@ def sgd_sgld(hparams):
       if not self.out_of_dist:
         self.file_out.close()
     
-  model = util.build_last_layer(features_train_in, n_class)
+  model = build_last_layer(features_train_in, n_class)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -191,7 +211,7 @@ def bootstrap(hparams):
   batch_size = hparams['batch_size']
   samples = hparams['samples']
 
-  model = util.build_last_layer(features_train_in, n_class)
+  model = build_last_layer(features_train_in, n_class)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -258,8 +278,7 @@ def dropout(hparams):
   samples = hparams['samples']
   p_dropout = hparams['p_dropout']
 
-  model = util.build_last_layer(features_train_in, n_class, 
-                                p_dropout=p_dropout)
+  model = build_last_layer(features_train_in, n_class, p_dropout=p_dropout)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -312,8 +331,7 @@ def dropout(hparams):
 #%% Sample
 
 def main(argv):
-#  del argv
-#  algo = argv[1]
+  algo = argv[1]
   
   # Hyperparameters
   """
@@ -326,90 +344,66 @@ def main(argv):
   p_dropout: 0.2, 0.3, 0.4, 0.5 
   """
   
-  hparams = {'dataset': 'cifar100-first-100',
-             'algorithm': 'onepoint',
-             'epochs': 10,
-             'batch_size': 64,
-             'lr': 0.001,
-             'p_dropout': 0.5,
-             'samples': 1000
+  hparams = {'dataset': 'cifar10-first-10',
+             'algorithm': algo
             }
   
-  onepoint(hparams)
+  list_batch_size = [128]
+  list_lr = [0.001, 0.0005, 0.0001, 0.00005, 0.00001]
+
+  if algo == 'sgdsgld': 
+    # 5 sim
+    list_samples = [10, 100, 1000]
+  elif algo == 'dropout':
+    # 15
+    list_samples = [10, 100, 1000]
+    list_epochs = [100]
+    list_p_dropout = [0.1, 0.3, 0.5]
+  elif algo == 'bootstrap':
+    # 5
+    list_samples = [10, 100]
+    list_epochs = [10]
+  elif algo == 'onepoint':
+    onepoint(hparams)
+    return 
+  else:
+    raise ValueError('this algorithm is not supported')
   
-#  if algo == 'sgdsgld': 
-#    # 15 sim
-#    list_dataset = ['cifar100-first-100']
-#    list_algorithms = ['sgdsgld']
-#    list_samples = [10, 100, 1000]
-#    list_batch_size = [128]
-#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
-#  
-#    list_epochs = [100]
-#    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-#  elif algo == 'dropout':
-#    # 45
-#    list_dataset = ['cifar100-first-100']
-#    list_algorithms = ['dropout']
-#    list_samples = [10, 100, 1000]
-#    list_batch_size = [128]
-#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
-#  
-#    list_epochs = [100]
-#    list_p_dropout = [0.1, 0.3, 0.5]
-#  elif algo == 'bootstrap':
-#    # 10
-#    list_dataset = ['cifar100-first-100']
-#    list_algorithms = ['bootstrap']
-#    list_samples = [10, 100]
-#    list_batch_size = [128]
-#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
-#  
-#    list_epochs = [10]
-#    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-#  else:
-#    raise ValueError('this algorithm is not supported')
-#  
-#  
-#  
-#  i = 0
-#  def smartprint(i):
-#    print('----------------------')
-#    print('End of {} step'.format(i))
-#    print('----------------------')
-#  
-#  for dataset, algorithm, samples, batch_size, lr in \
-#    itertools.product(list_dataset, list_algorithms,  
-#                      list_samples, list_batch_size, list_lr):
-#  
-#    hparams = {'dataset': dataset,
-#               'algorithm': algorithm,
-#               'epochs': 100,
-#               'batch_size': batch_size,
-#               'lr': lr,
-#               'p_dropout': 0.5,
-#               'samples': samples
-#              }
-#    
-#    if algorithm == 'bootstrap':
-#      for epochs in list_epochs:
-#        hparams['epochs'] = epochs
-#        bootstrap(hparams)
-#        i += 1
-#        smartprint(i)
-#    elif algorithm == 'dropout':
-#      for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
-#        hparams['epochs'] = epochs
-#        hparams['p_dropout'] = p_dropout
-#        dropout(hparams)
-#        i += 1
-#        smartprint(i)
-#    elif algorithm == 'sgdsgld':
-#      sgd_sgld(hparams)
-#      i += 1
-#      smartprint(i)
-#    else:
-#      raise ValueError('this algorithm is not supported')
+  i = 0
+  def smartprint(i):
+    print('----------------------')
+    print('End of {} step'.format(i))
+    print('----------------------')
+  
+  for samples, batch_size, lr in \
+    itertools.product(list_samples, list_batch_size, list_lr):
+  
+    hparams['batch_size'] = batch_size
+    hparams['lr'] = lr
+    hparams['samples'] = samples
+    # Technical reason.
+    hparams['epochs'] = 10
+    hparams['p_dropout'] = 0.5
+    
+    if algo == 'bootstrap':
+      for epochs in list_epochs:
+        hparams['epochs'] = epochs
+        bootstrap(hparams)
+        i += 1
+        smartprint(i)
+    elif algo == 'dropout':
+      for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
+        hparams['epochs'] = epochs
+        hparams['p_dropout'] = p_dropout
+        dropout(hparams)
+        i += 1
+        smartprint(i)
+    elif algo == 'sgdsgld':
+      sgd_sgld(hparams)
+      i += 1
+      smartprint(i)
+    else:
+      raise ValueError('this algorithm is not supported')
     
 
     

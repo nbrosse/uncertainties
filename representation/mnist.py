@@ -87,18 +87,12 @@ def main(argv):
   print('losses in')
   print(losses_in)
 
-  # Splitting train into train and validation sets.
-  x_train, x_val, y_train, y_val = train_test_split(x_train, y_train)
-  
   # In and out of sample distribution
   sec_train = np.dot(y_train, index).astype(bool)
-  sec_val = np.dot(y_val, index).astype(bool)
   sec_test = np.dot(y_test, index).astype(bool)
   
   x_train_in, x_train_out = x_train[sec_train, :], x_train[~sec_train, :]
   y_train_in = y_train[np.ix_(sec_train, index)]
-  x_val_in, x_val_out = x_val[sec_val, :], x_val[~sec_val, :]
-  y_val_in = y_val[np.ix_(sec_val, index)]
   x_test_in, x_test_out = x_test[sec_test, :], x_test[~sec_test, :]
   y_test_in = y_test[np.ix_(sec_test, index)]
   
@@ -109,24 +103,19 @@ def main(argv):
   
   features_train_in = submodel.predict(x_train_in)
   features_train_out = submodel.predict(x_train_out)
-  features_val_in = submodel.predict(x_val_in)
-  features_val_out = submodel.predict(x_val_out)
   features_test_in = submodel.predict(x_test_in)
   features_test_out = submodel.predict(x_test_out)
   
   np.savez(os.path.join(path_dir, 'features.npz'), 
            features_train_in=features_train_in,
            features_train_out=features_train_out,
-           features_val_in=features_val_in,
-           features_val_out=features_val_out,
-           features_test_in=features_test_in,
-           features_test_out=features_test_out
+           features_val_in=features_test_in,
+           features_val_out=features_test_out
           )
   
   np.savez(os.path.join(path_dir, 'y.npz'),
            y_train_in=y_train_in,
-           y_val_in=y_val_in,
-           y_test_in=y_test_in
+           y_val_in=y_test_in
           )
 
 

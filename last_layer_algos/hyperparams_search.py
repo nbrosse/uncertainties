@@ -7,9 +7,9 @@ and one algorithm.
 
 #%% Imports
 
-#  from __future__ import absolute_import
-#  from __future__ import division
-#  from __future__ import print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 # https://stackoverflow.com/questions/21485319/high-memory-usage-using-python-multiprocessing
 
@@ -30,13 +30,13 @@ import utils.metrics as metrics
 
 #nb_cores = mp.cpu_count()
 mem = virtual_memory()
-MEM = mem.total / 4.0 # (2.0 * nb_cores) # max physical memory for us
+MEM = mem.total / 10.0 # (2.0 * nb_cores) # max physical memory for us
 
 
-#%% Compute AURC
+#%% Compute AURC and ECE
 
 def compute_aurc(y, h5file):
-  """Compute AURC.
+  """Compute AURC from a h5file.
   
   Args:
     y: true y, one-hot encoding size (n_test, n_class)
@@ -80,12 +80,52 @@ def compute_aurc(y, h5file):
   f.close()
   return aurc
 
+def compute_ece(y, h5file):
+  """Compute ECE from a h5file.
+  
+  Args:
+    y: true y, one-hot encoding size (n_test, n_class)
+    h5file: path to the h5 file containing the tab of probabilities.
+  Returns:
+    ece: expected calibration error.
+  """
+  memsize = os.path.getsize(h5file)
+  nb_chunks = int(memsize // MEM + 1) 
+  f = h5py.File(os.path.join(h5file), 'r')  # read mode
+  h5data = f['proba']
+  num_items_per_chunk = h5data.shape[0] // nb_chunks 
+  # number of chunks is equal to nb_chunks or nb_chunks + 1
+  p_mean = []
+  for i in np.arange(nb_chunks + 1):
+    if i < nb_chunks:
+      p_i = h5data[i*num_items_per_chunk:(i+1)*num_items_per_chunk, :, :]
+      y_i = y[i*num_items_per_chunk:(i+1)*num_items_per_chunk, :]
+    elif h5data.shape[0] % nb_chunks == 0:  # i == nb_chunks
+      # number of chunks is equal to nb_chunks
+      break
+    else:
+      # number of chunks is equal to nb_chunks + 1
+      p_i = h5data[i*num_items_per_chunk:, :, :]
+      y_i = y[i*num_items_per_chunk:, :]
+    res_dic = metrics.compute_metrics(y_i, p_i)
+    p_mean.append(res_dic['p_mean'])
+  p_mean = np.vstack(tuple(p_mean))
+  cal = metrics.calibration(y, p_mean)
+  ece = cal['ece']
+  f.close()
+  return ece
+
+
 #%% Hyperparameters search
 
 dataset = 'cifar100-first-100'
 output_dir = 'outputs/last_layer/{}_*'.format(dataset)
-npzfile = np.load('saved_models/{}/y.npz'.format(dataset))
-y = npzfile['y_test_in']
+
+if dataset.split('-')[0] == 'imagenet':
+  y = np.load('saved_models/{}/y.npy'.format(dataset))
+else:
+  npzfile = np.load('saved_models/{}/y.npz'.format(dataset))
+  y = npzfile['y_test_in']
 list_experiments = glob.glob(output_dir)
 
 # Windows
@@ -149,9 +189,83 @@ def launch_aurc(experiment):
   # to dataframe
   df = pd.DataFrame(dic)
   return df
+
+def launch_ece(experiment):
+  """Launch the computation of ece for one experiment."""
+  # Create dict to store params and ece => to pd.DataFrame
+  dic = {'dataset': [],
+         'algorithm': [],
+         'ece': []
+        }
+  list_params = experiment.split('/')[-1].split('_')[2:]
+  for p in list_params:
+    p = p.split('-')[0]
+    dic[p] = []
   
+  # Launch ECE computation.
+  exp = experiment.split('/')[-1]
+  exp_split = exp.split('_')
+  dataset = exp_split[0]
+  algorithm = exp_split[1]
+  if algorithm == 'sgdsgld':
+    ece = {}
+    ece['sgd'] = compute_ece(y, os.path.join(experiment, 'p_sgd_in.h5'))
+    ece['sgld'] = compute_ece(y, os.path.join(experiment, 'p_sgld_in.h5'))
+    for opt in ['sgd', 'sgld']:
+      dic['dataset'].append(dataset)
+      dic['algorithm'].append(opt)
+      for p in exp_split[2:]:
+        if len(p.split('-')) == 2:
+          p1, p2 = p.split('-') 
+          dic[p1].append(float(p2))
+        else:
+          p1, p2, p3 = p.split('-')
+          dic[p1].append(float('-'.join([p2, p3])))
+      dic['ece'].append(ece[opt])
+  else:
+    ece = compute_ece(y, os.path.join(experiment, 'p_in.h5'))
+    dic['dataset'].append(dataset)
+    dic['algorithm'].append(algorithm)
+    for p in exp_split[2:]:
+      if len(p.split('-')) == 2:
+        p1, p2 = p.split('-') 
+        dic[p1].append(float(p2))
+      else:
+        p1, p2, p3 = p.split('-')
+        dic[p1].append(float('-'.join([p2, p3])))
+    dic['ece'].append(ece) 
+  
+  # to dataframe
+  df = pd.DataFrame(dic)
+  return df
 
 # Sequential implementation
+
+#print('---------------')
+#print('AURC')
+#print('---------------')
+#
+#res = []
+#i = 0
+#for experiment in list_experiments:
+#  print('---------------')
+#  print('Step {}'.format(i))
+#  print('---------------')
+#  
+#  df = launch_aurc(experiment)
+#  res.append(df)
+#  i += 1
+#
+#print('Postprocessing')  
+#df = pd.concat(res, ignore_index=True)
+#data_algo = list_experiments[0].split('/')[-1].split('_')[:2]
+##data_algo.append('ece')
+#df.to_pickle(os.path.join('outputs/last_layer', '_'.join(data_algo)) + '.pkl')  
+#print('End')
+
+print('---------------')
+print('ECE')
+print('---------------')
 
 res = []
 i = 0
@@ -160,13 +274,14 @@ for experiment in list_experiments:
   print('Step {}'.format(i))
   print('---------------')
   
-  df = launch_aurc(experiment)
+  df = launch_ece(experiment)
   res.append(df)
   i += 1
 
 print('Postprocessing')  
 df = pd.concat(res, ignore_index=True)
 data_algo = list_experiments[0].split('/')[-1].split('_')[:2]
+data_algo.append('ece')
 df.to_pickle(os.path.join('outputs/last_layer', '_'.join(data_algo)) + '.pkl')  
 print('End')
 
@@ -186,18 +301,87 @@ print('End')
 
 #%% Using pandas dataframe to select best hyperparams.
 
-#p1 = 'outputs/{}_dropout.pkl'.format(dataset)
-#p2 = 'outputs/{}_bootstrap.pkl'.format(dataset)
-#p3 = 'outputs/{}_sgdsgld.pkl'.format(dataset)
+dataset = 'cifar100-first-100'
+dataset = 'cifar10-first-10'
+dataset = 'imagenet-first-1000'
+dataset = 'mnist-first-10'
+
+def process_df(dataset):
+  
+  def _f_aurc(group):
+    group['increase_aurc'] = group['min_aurc'].divide(group['min_aurc'].min())
+    return group
+  
+  def _f_ece(group):
+    group['increase_ece'] = group['ece'].divide(group['ece'].min())
+    return group
+  
+  list_df = []
+  
+  for algorithm in ['sgdsgld', 'dropout', 'bootstrap']:
+    p = 'outputs/{}_hyperparams/{}_{}.pkl'.format(dataset, dataset, algorithm)
+    pe = 'outputs/{}_hyperparams/{}_{}_ece.pkl'.format(dataset, dataset, algorithm)
+    df = pd.read_pickle(p)
+    dfe = pd.read_pickle(pe)
+    if 'rel_increase' in df.columns:
+      df.drop(columns='rel_increase', inplace=True)
+    if 'rel_increase' in dfe.columns:
+      dfe.drop(columns='rel_increase', inplace=True)
+    df['min_aurc'] = df[['aurc_std', 'aurc_softmax', 'aurc_q']].min(axis=1)
+    if algorithm == 'sgdsgld':
+      df = df.groupby('algorithm').apply(_f_aurc)
+      dfe = dfe.groupby('algorithm').apply(_f_ece)
+    else:
+      df['increase_aurc'] = df['min_aurc'].divide(df['min_aurc'].min())
+      dfe['increase_ece'] = dfe['ece'].divide(dfe['ece'].min())
+    list_df.append(df.merge(dfe).copy())
+  res = pd.concat(list_df, axis=0, sort=False, ignore_index=True)
+  res.to_pickle('outputs/{}_hyperparams/{}_hparams.pkl'.format(dataset, dataset))
+  return res
+
+res = process_df(dataset)
+
+#---------------------------------------
+
+#  df.to_pickle(path_to_df)
+#  return df
 #
-#def process_df(path_to_df):
+#def process_df_ece(path_to_df):
 #  df = pd.read_pickle(path_to_df)
-#  df['min_aurc'] = df[['aurc_std', 'aurc_softmax', 'aurc_q']].min(axis=1)
-#  df['rel_increase'] = df['min_aurc'].divide(df['min_aurc'].min())
+#  df['increase_ece'] = df['ece'].divide(df['ece'].min())
 #  df.to_pickle(path_to_df)
 #  return df
 #  
+#df4 = process_df_aurc(p4)
 #df1 = pd.read_pickle(p1)
+#df4e = process_df_ece(p3e)
 #df2 = pd.read_pickle(p2)
-#df1 = process_df(p1)
-#df3 = pd.read_pickle(p3)
+#df2e = pd.read_pickle(p2e)
+#df4 = pd.read_pickle(p4)
+#df3e = pd.read_pickle(p3e)
+#
+#df4.rename(columns={'rel_increase':'increase_aurc'}, inplace=True)
+#print(df1.columns)
+#
+#df3 = df3.merge(df3e)
+#df1 = df1.merge(df1e)
+#df2 = df2.merge(df2e)
+#
+#df = pd.concat([df1, df2, df3], axis=0, sort=False, ignore_index=True)
+#
+#df.to_pickle('mnist-first-10_hparams.pkl')
+#
+#tp = df3e.copy()
+#tp = df3e.groupby('algorithm') #.apply(lambda tp:tp['increase_ece'] = tp['ece'].divide(df['ece'].min()))
+#
+#df3e.drop('increase_ece', axis=1, inplace=True)
+#
+#temp = tp.apply(f)
+#
+#df3e = temp
+#
+#df3 = pd.concat([df3, df4], axis=0)
+#
+#def f(group):
+#  group['increase_ece'] = group['ece'].divide(group['ece'].min())
+#  return group
