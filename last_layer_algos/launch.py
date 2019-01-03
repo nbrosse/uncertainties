@@ -348,8 +348,8 @@ def main(argv):
              'algorithm': algo
             }
   
-  list_batch_size = [128]
-  list_lr = [0.001, 0.0005, 0.0001, 0.00005, 0.00001]
+  list_batch_size = [32]
+  list_lr = [0.1, 0.05, 0.01, 0.005, 0.001]
 
   if algo == 'sgdsgld': 
     # 5 sim
@@ -364,6 +364,12 @@ def main(argv):
     list_samples = [10, 100]
     list_epochs = [10]
   elif algo == 'onepoint':
+    # For technical reasons
+    hparams['epochs'] = 10
+    hparams['samples'] = 10
+    hparams['lr'] = 0.1
+    hparams['batch_size'] = 32
+    hparams['p_dropout'] = 0.5
     onepoint(hparams)
     return 
   else:

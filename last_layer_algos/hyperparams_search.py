@@ -20,6 +20,7 @@ from psutil import virtual_memory
 
 import numpy as np
 import pandas as pd
+import pickle
 
 import utils.metrics as metrics
 
@@ -341,47 +342,37 @@ def process_df(dataset):
 
 res = process_df(dataset)
 
-#---------------------------------------
+#%% Reading dataframes visually
 
-#  df.to_pickle(path_to_df)
-#  return df
-#
-#def process_df_ece(path_to_df):
-#  df = pd.read_pickle(path_to_df)
-#  df['increase_ece'] = df['ece'].divide(df['ece'].min())
-#  df.to_pickle(path_to_df)
-#  return df
-#  
-#df4 = process_df_aurc(p4)
-#df1 = pd.read_pickle(p1)
-#df4e = process_df_ece(p3e)
-#df2 = pd.read_pickle(p2)
-#df2e = pd.read_pickle(p2e)
-#df4 = pd.read_pickle(p4)
-#df3e = pd.read_pickle(p3e)
-#
-#df4.rename(columns={'rel_increase':'increase_aurc'}, inplace=True)
-#print(df1.columns)
-#
-#df3 = df3.merge(df3e)
-#df1 = df1.merge(df1e)
-#df2 = df2.merge(df2e)
-#
-#df = pd.concat([df1, df2, df3], axis=0, sort=False, ignore_index=True)
-#
-#df.to_pickle('mnist-first-10_hparams.pkl')
-#
-#tp = df3e.copy()
-#tp = df3e.groupby('algorithm') #.apply(lambda tp:tp['increase_ece'] = tp['ece'].divide(df['ece'].min()))
-#
-#df3e.drop('increase_ece', axis=1, inplace=True)
-#
-#temp = tp.apply(f)
-#
-#df3e = temp
-#
-#df3 = pd.concat([df3, df4], axis=0)
-#
-#def f(group):
-#  group['increase_ece'] = group['ece'].divide(group['ece'].min())
-#  return group
+paths = {}
+dfs = {}
+sec_dfs = {}
+
+for dataset in ['mnist-first-10', 'cifar10-first-10', 'cifar100-first-100']:
+  paths[dataset] = 'outputs/{}_hyperparams/{}_hparams.pkl'.format(dataset, dataset)
+  
+  with open('outputs/last_layer/{}_onepoint/'
+            'metrics_dic.pkl'.format(dataset), 'rb') as f:
+    onepoint = pickle.load(f)
+  
+  dic_onepoint = {'algorithm': ['onepoint'],
+                  'dataset': [dataset],
+                  'aurc_softmax': [onepoint['risk_cov_softmax']['aurc']],
+                  'min_aurc': [onepoint['risk_cov_softmax']['aurc']],
+                  'ece': [onepoint['cal']['ece']],
+                  }
+  df_onepoint = pd.DataFrame.from_dict(dic_onepoint)
+  
+  
+  dfs[dataset] = pd.read_pickle(paths[dataset])
+  df = dfs[dataset].loc[dfs[dataset]['increase_aurc'] == 1, :].copy()
+  df = df.append(df_onepoint, sort=True)
+  df['increase_aurc'] = df['min_aurc'].divide(df['min_aurc'].min())
+  df['increase_ece'] = df['ece'].divide(df['ece'].min())
+  sec_dfs[dataset] = df
+  
+df_total = pd.concat([sec_dfs[dataset] for dataset in ['mnist-first-10', 'cifar10-first-10', 'cifar100-first-100']], axis=0)
+df_total.to_csv('outputs/{}_hyperparams/best_hparams.csv'.format(dataset))
+  # Compressed view
+#  dfs[dataset] = dfs[dataset][['algorithm', 'lr', 's', 'min_aurc', 
+#     'increase_aurc', 'ece', 'increase_ece', 'ep', 'pdrop']]

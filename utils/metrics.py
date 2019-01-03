@@ -406,36 +406,20 @@ def calibration(y, p_mean, num_bins=10):
 
 def main(argv):
   del argv
-#  dataset = 'cifar100-first-100'
-  dataset = 'imagenet-first-1000'
-  # y
-#  npzfile = np.load('saved_models/{}/y.npz'.format(dataset))
-#  y = npzfile['y_test_in']
-  # y imagenet
-  y = np.load('saved_models/{}/y.npy'.format(dataset))
+  dataset = 'mnist-first-10'
+
+  if dataset.startswith('imagenet'):
+    y = np.load('saved_models/{}/y.npy'.format(dataset))
+  else:
+    npzfile = np.load('saved_models/{}/y.npz'.format(dataset))
+    y = npzfile['y_test_in']
   
-  # Paths to folders
-#  path_sgd_sgld = 'outputs/last_layer/{}_sgdsgld_lr-0.001_bs-128_s-1000'.format(dataset)
-#  path_dropout = 'outputs/last_layer/{}_dropout_ep-100_lr-0.005_bs-128_s-100_pdrop-0.5'.format(dataset)
-#  path_bootstrap = 'outputs/last_layer/{}_bootstrap_ep-10_lr-0.005_bs-128_s-10'.format(dataset)
-#  path_onepoint = 'outputs/last_layer/{}_onepoint'.format(dataset)
-#  path_sgd = 'outputs/last_layer/imagenet-first-1000_sgdsgld_lr-0.01_bs-512_s-100'
-  path = 'outputs/last_layer/imagenet-first-1000_dropout_ep-10_lr-0.01_bs-512_s-10_pdrop-0.1'
-  
-  # Paths to h5 files
+  path = 'outputs/last_layer/{}_onepoint'.format(dataset)
   p = os.path.join(path, 'p_in.h5')
-#  p_sgld = os.path.join(path_sgd_sgld, 'p_sgld_in.h5')
-#  p_dropout = os.path.join(path_dropout, 'p_in.h5')
-#  p_bootstrap = os.path.join(path_bootstrap, 'p_in.h5')
-#  p_onepoint = os.path.join(path_onepoint, 'p_in.h5')
   
   save_results(metrics_from_h5file(y, p), path)
-#  save_results(metrics_from_h5file(y, p_sgld), path_sgd_sgld, 'dic_sgld.pkl')
-#  save_results(metrics_from_h5file(y, p_dropout), path_dropout)
-#  save_results(metrics_from_h5file(y, p_bootstrap), path_bootstrap)
-#  save_results(metrics_from_h5file(y, p_onepoint), path_onepoint)
-  print('End')
 
+  print('End')
 
 if __name__ == '__main__':
   app.run(main)  # mnist, cifar10, cifar100
