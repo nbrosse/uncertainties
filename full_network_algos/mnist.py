@@ -1,46 +1,56 @@
-#%% Imports
+# -*- coding: utf-8 -*-
+"""Simple feedforward neural network for Mnist."""
+
+
+#%% Packages
 
 import os
 from absl import app
+
 import itertools
 import h5py
 
 import numpy as np
 import keras
-from keras.layers import Input, Dense
-from keras.models import Sequential, Model
 
-import utils.sgld as sgld
+from keras.models import Sequential
+from keras.layers import Dense, Flatten
 import utils.util as util
+import utils.sgld as sgld
 from utils.dropout_layer import PermaDropout
 
+NUM_CLASSES = 10
+NUM_TEST_EXAMPLES = 10000
+NUM_TRAIN_EXAMPLES = 60000
 
-#%% Algorithms
+#%% Define and train the model
 
-def build_last_layer(features_train, num_classes, 
-                     p_dropout=None):
-  """Build the last layer keras model.
-  
-  Args:
-    features_train: features of the trainig set.
-    num_classes: int, number of classes.
-    p_dropout: float between 0 and 1. Fraction of the input units to drop.
-  Returns:
-    submodel: last layer model.
-  """
+def build_model(features_train, num_classes, p_dropout=None):
   n = features_train.shape[0]
-  features_shape = (features_train.shape[1],)
   if p_dropout is not None:
-    x = Input(shape=features_shape, name='ll_input')
-    y = PermaDropout(p_dropout, name='ll_dropout')(x)
-    y = Dense(num_classes, activation='softmax', name='ll_dense',
-              kernel_regularizer=keras.regularizers.l2(1./n),
-              bias_regularizer=keras.regularizers.l2(1./n))(y)
-    model = Model(inputs=x, outputs=y)
+    model = Sequential()
+    model.add(Flatten(input_shape=(28, 28), name='l_1'))
+    model.add(Dense(512, activation='relu', name='l_2', 
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
+    model.add(PermaDropout(p_dropout, name='l_dropout_1'))
+    model.add(Dense(20, activation='relu', name='features_layer',
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
+    model.add(PermaDropout(p_dropout, name='l_dropout_2'))
+    model.add(Dense(num_classes, activation='softmax', name='ll_dense',
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
   else:
     model = Sequential()
-    model.add(Dense(num_classes, activation='softmax', 
-                    input_shape=features_shape, name='ll_dense',
+    model.add(Flatten(input_shape=(28, 28), name='l_1'))
+    model.add(Dense(512, activation='relu', name='l_2', 
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
+    model.add(Dense(20, activation='relu', name='features_layer',
+                    kernel_regularizer=keras.regularizers.l2(1./n),
+                    bias_regularizer=keras.regularizers.l2(1./n)))
+    model.add(Dense(num_classes, activation='softmax', name='ll_dense',
                     kernel_regularizer=keras.regularizers.l2(1./n),
                     bias_regularizer=keras.regularizers.l2(1./n)))
   return model
@@ -48,72 +58,38 @@ def build_last_layer(features_train, num_classes,
 
 def input_data(hparams):
   
-  input_path = 'saved_models/{}'.format(hparams['dataset'])
-  features = np.load(os.path.join(input_path, 'features.npz'))
-  y = np.load(os.path.join(input_path, 'y.npz'))
+  (x_train, y_train),(x_test, y_test) = keras.datasets.mnist.load_data()
+  x_train, x_test = x_train / 255.0, x_test / 255.0
+  y_train = keras.utils.to_categorical(y_train, 10)
+  y_test = keras.utils.to_categorical(y_test, 10)
   
-  features_train_in = features['features_train_in']
-  y_train_in = y['y_train_in']
-  y_val_in = y['y_test_in']
-  features_val_out = features['features_test_out']
-  features_val_in = features['features_test_in']
+  n_class = hparams['n_class']
+  method = hparams['method']
   
-  if features_val_out.shape[0] == 0:
-    features_val_out = None
-    print('No out of distribution samples')
-
-  return (features_train_in, y_train_in), (features_val_in, 
-         y_val_in), features_val_out
-
-def onepoint(hparams):
+  index = util.select_classes(y_train, n_class, method=method)
+  sec_train = np.dot(y_train, index).astype(bool)
+  sec_test = np.dot(y_test, index).astype(bool)
   
-  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
+  x_train_in = x_train[sec_train, :]
+  y_train_in = y_train[np.ix_(sec_train, index)]
+  x_test_in, x_test_out = x_test[sec_test, :], x_test[~sec_test, :]
+  y_test_in = y_test[np.ix_(sec_test, index)]
   
-  (features_train_in, y_train_in), (features_val_in, y_val_in), \
-    features_val_out = input_data(hparams)
-    
-  n_class = y_train_in.shape[1]
-  
-  model = build_last_layer(features_train_in, n_class)
-  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
-                             hparams['dataset'].split('-')[0])
-
-  model.load_weights(model_path, by_name=True)
-  
-  name_in = os.path.join(output_dir, 'p_in.h5')
-  file_in = h5py.File(name_in, 'a')
-  shape_in = (features_val_in.shape[0], n_class, 1)
-  proba_in = file_in.create_dataset('proba', 
-                                    shape_in,
-                                    # dtype='f2',
-                                    compression='gzip')
-  if features_val_out is not None:
-    name_out = os.path.join(output_dir, 'p_out.h5')
-    file_out = h5py.File(name_out, 'a')
-    shape_out = (features_val_out.shape[0], n_class, 1)
-    proba_out = file_out.create_dataset('proba', 
-                                        shape_out,
-                                        # dtype='f2',
-                                        compression='gzip') 
-
-  proba_in[:, :, 0] = model.predict(features_val_in)
-  if features_val_out is not None:
-    proba_out[:, :, 0] = model.predict(features_val_out)
-    
-  file_in.close()
-  if features_val_out is not None:
-    file_out.close()
+  return (x_train_in, y_train_in), (x_test_in, y_test_in), x_test_out, index
 
 
 def sgd_sgld(hparams):  
   
-  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
-  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
+  n_class = hparams['n_class']
   
-  (features_train_in, y_train_in), (features_val_in, y_val_in), \
-    features_val_out = input_data(hparams)
+  output_dir = util.create_run_dir('outputs/full_network/', hparams)
+  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
     
-  n_class = y_train_in.shape[1]
+  (features_train_in, y_train_in), (features_val_in, y_val_in), \
+    features_val_out, index = input_data(hparams)
+    
+  np.save(os.path.join(output_dir, 'index.npy'), index)
+
   samples = hparams['samples']
   lr = hparams['lr']
   batch_size = hparams['batch_size']
@@ -172,7 +148,7 @@ def sgd_sgld(hparams):
       if not self.out_of_dist:
         self.file_out.close()
     
-  model = build_last_layer(features_train_in, n_class)
+  model = build_model(features_train_in, n_class)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -199,19 +175,22 @@ def sgd_sgld(hparams):
 
 def bootstrap(hparams):
   
-  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
-  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
+  n_class = hparams['n_class']
   
+  output_dir = util.create_run_dir('outputs/full_network/', hparams)
+  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
+
   (features_train_in, y_train_in), (features_val_in, y_val_in), \
-    features_val_out = input_data(hparams)
+    features_val_out, index = input_data(hparams)
     
-  n_class = y_train_in.shape[1]
+  np.save(os.path.join(output_dir, 'index.npy'), index)
+  
   epochs = hparams['epochs']
   lr = hparams['lr']
   batch_size = hparams['batch_size']
   samples = hparams['samples']
 
-  model = build_last_layer(features_train_in, n_class)
+  model = build_model(features_train_in, n_class)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -265,20 +244,23 @@ def bootstrap(hparams):
 
 def dropout(hparams):
   
-  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
-  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
+  n_class = hparams['n_class']
   
-  (features_train_in, y_train_in), (features_val_in, y_val_in), \
-    features_val_out = input_data(hparams)
+  output_dir = util.create_run_dir('outputs/full_network/', hparams)
+  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
     
-  n_class = y_train_in.shape[1]
+  (features_train_in, y_train_in), (features_val_in, y_val_in), \
+    features_val_out, index = input_data(hparams)
+    
+  np.save(os.path.join(output_dir, 'index.npy'), index)
+  
   epochs = hparams['epochs']
   lr = hparams['lr']
   batch_size = hparams['batch_size']
   samples = hparams['samples']
   p_dropout = hparams['p_dropout']
 
-  model = build_last_layer(features_train_in, n_class, p_dropout=p_dropout)
+  model = build_model(features_train_in, n_class, p_dropout=p_dropout)
   model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
                              hparams['dataset'].split('-')[0])
 
@@ -328,6 +310,7 @@ def dropout(hparams):
     file_out.close()
   print('End of sampling - dropout.')
 
+
 #%% Sample
 
 def main(argv):
@@ -343,34 +326,25 @@ def main(argv):
   lr: 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001
   p_dropout: 0.2, 0.3, 0.4, 0.5 
   """
-  hparams = {'dataset': 'cifar10-first-10',
-             'algorithm': algo
+  
+  hparams = {'dataset': 'mnist-first-10',
+             'algorithm': algo,
+             'n_class': 10,
+             'method': 'first'
             }
   
   list_batch_size = [32]
   list_lr = [0.1, 0.05, 0.01, 0.005, 0.001]
-
+  
   if algo == 'sgdsgld': 
-    # 5 sim
     list_samples = [10, 100, 1000]
   elif algo == 'dropout':
-    # 15
     list_samples = [10, 100, 1000]
     list_epochs = [100]
     list_p_dropout = [0.1, 0.3, 0.5]
   elif algo == 'bootstrap':
-    # 5
     list_samples = [10, 100]
     list_epochs = [10]
-  elif algo == 'onepoint':
-    # For technical reasons
-    hparams['epochs'] = 10
-    hparams['samples'] = 10
-    hparams['lr'] = 0.1
-    hparams['batch_size'] = 32
-    hparams['p_dropout'] = 0.5
-    onepoint(hparams)
-    return 
   else:
     raise ValueError('this algorithm is not supported')
   
@@ -414,12 +388,4 @@ def main(argv):
     
 if __name__ == '__main__':
   app.run(main)  # mnist, cifar10, cifar100
-  
-  
-
-
-
-
-
-
 
