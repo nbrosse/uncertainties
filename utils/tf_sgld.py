@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-""" Implementation of SGLD in term of Keras optimizer."""
+""" Implementation of SGLD in term of tf.Keras optimizer."""
 
 #%% Packages
 
-import keras
+import tensorflow.keras as keras
 K = keras.backend
     
 #%% class SGLD
@@ -56,5 +56,3 @@ class SGLD(keras.optimizers.Optimizer):
                }
       base_config = super(SGLD, self).get_config()
       return dict(list(base_config.items()) + list(config.items()))
-    
-    

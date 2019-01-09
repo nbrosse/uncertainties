@@ -314,75 +314,80 @@ def dropout(hparams):
 #%% Sample
 
 def main(argv):
-  algo = argv[1]
+  # algo = argv[1]
   
-  # Hyperparameters
-  """
-  dataset: mnist, cifar10, cifar100, diabetic, imagenet under the form 
-           mnist-{first, last, random}-{n_class}, etc.
-  algorithm: sgdsgld, bootstrap, dropout
-  epochs: 10, 100, 1000, 10000 (= samples for dropout and bootstrap)
-  batch_size: 32, 64, 128
-  lr: 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001
-  p_dropout: 0.2, 0.3, 0.4, 0.5 
-  """
+  for algo in ['sgdsgld', 'dropout', 'bootstrap']:
   
-  hparams = {'dataset': 'mnist-first-10',
-             'algorithm': algo,
-             'n_class': 10,
-             'method': 'first'
-            }
-  
-  list_batch_size = [32]
-  list_lr = [0.1, 0.05, 0.01, 0.005, 0.001]
-  
-  if algo == 'sgdsgld': 
-    list_samples = [10, 100, 1000]
-  elif algo == 'dropout':
-    list_samples = [10, 100, 1000]
-    list_epochs = [100]
-    list_p_dropout = [0.1, 0.3, 0.5]
-  elif algo == 'bootstrap':
-    list_samples = [10, 100]
-    list_epochs = [10]
-  else:
-    raise ValueError('this algorithm is not supported')
-  
-  i = 0
-  def smartprint(i):
-    print('----------------------')
-    print('End of {} step'.format(i))
-    print('----------------------')
-  
-  for samples, batch_size, lr in \
-    itertools.product(list_samples, list_batch_size, list_lr):
-  
-    hparams['batch_size'] = batch_size
-    hparams['lr'] = lr
-    hparams['samples'] = samples
-    # Technical reason.
-    hparams['epochs'] = 10
-    hparams['p_dropout'] = 0.5
+    # Hyperparameters
+    """
+    dataset: mnist, cifar10, cifar100, diabetic, imagenet under the form 
+             mnist-{first, last, random}-{n_class}, etc.
+    algorithm: sgdsgld, bootstrap, dropout
+    epochs: 10, 100, 1000, 10000 (= samples for dropout and bootstrap)
+    batch_size: 32, 64, 128
+    lr: 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001
+    p_dropout: 0.2, 0.3, 0.4, 0.5 
+    """
     
-    if algo == 'bootstrap':
-      for epochs in list_epochs:
-        hparams['epochs'] = epochs
-        bootstrap(hparams)
-        i += 1
-        smartprint(i)
+    hparams = {'dataset': 'mnist-first-10',
+               'algorithm': algo,
+               'n_class': 10,
+               'method': 'first'
+              }
+    
+    list_batch_size = [32]
+    list_lr = [0.1, 0.01, 0.001, 0.0001]
+    
+    if algo == 'sgdsgld': 
+#      list_lr = [0.1, 0.001]
+      list_samples = [100]
     elif algo == 'dropout':
-      for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
-        hparams['epochs'] = epochs
-        hparams['p_dropout'] = p_dropout
-        dropout(hparams)
-        i += 1
-        smartprint(i)
-    elif algo == 'sgdsgld':
-      sgd_sgld(hparams)
-      i += 1
-      smartprint(i)
+#      list_lr = [0.1, 0.01]
+      list_samples = [100]
+      list_epochs = [100]
+      list_p_dropout = [0.1, 0.3, 0.5]
+    elif algo == 'bootstrap':
+#      list_lr = [0.01, 0.001]
+      list_samples = [100]
+      list_epochs = [10]
     else:
       raise ValueError('this algorithm is not supported')
+    
+    i = 0
+    def smartprint(i):
+      print('----------------------')
+      print('End of {} step'.format(i))
+      print('----------------------')
+    
+    for samples, batch_size, lr in \
+      itertools.product(list_samples, list_batch_size, list_lr):
+    
+      hparams['batch_size'] = batch_size
+      hparams['lr'] = lr
+      hparams['samples'] = samples
+      # Technical reason.
+      hparams['epochs'] = 10
+      hparams['p_dropout'] = 0.5
+      
+      if algo == 'bootstrap':
+        for epochs in list_epochs:
+          hparams['epochs'] = epochs
+          bootstrap(hparams)
+          i += 1
+          smartprint(i)
+      elif algo == 'dropout':
+        for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
+          hparams['epochs'] = epochs
+          hparams['p_dropout'] = p_dropout
+          dropout(hparams)
+          i += 1
+          smartprint(i)
+      elif algo == 'sgdsgld':
+        sgd_sgld(hparams)
+        i += 1
+        smartprint(i)
+      else:
+        raise ValueError('this algorithm is not supported')
     
 
     

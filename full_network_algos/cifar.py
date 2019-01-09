@@ -5,7 +5,6 @@ from __future__ import print_function
 
 from absl import app
 import os
-import shutil
 import itertools
 import h5py
 
@@ -14,10 +13,9 @@ import numpy as np
 import keras
 from keras.datasets import cifar10, cifar100
 from keras.preprocessing.image import ImageDataGenerator
-from keras.models import Sequential, Model
+from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
 from keras.layers import Conv2D, MaxPooling2D, BatchNormalization
-from keras import optimizers
 from keras import regularizers
 
 import utils.util as util
@@ -33,14 +31,16 @@ def input_data(hparams):
   dataset = hparams['dataset']
   n_class = hparams['n_class']
   method = hparams['method']
-  if dataset.startswith('cifar10'):
+  if dataset.startswith('cifar10-'):
     (x_train, y_train),(x_test, y_test) = cifar10.load_data()
+    y_train = keras.utils.to_categorical(y_train, 10)
+    y_test = keras.utils.to_categorical(y_test, 10)
   else:
     (x_train, y_train),(x_test, y_test) = cifar100.load_data()
+    y_train = keras.utils.to_categorical(y_train, 100)
+    y_test = keras.utils.to_categorical(y_test, 100)
   x_train = x_train.astype('float32')
   x_test = x_test.astype('float32')
-  y_train = keras.utils.to_categorical(y_train, n_class)
-  y_test = keras.utils.to_categorical(y_test, n_class)
   
   x_train, (mean, std) = whitening(x_train)
   x_test = normalize(x_test, mean, std)
@@ -56,6 +56,7 @@ def input_data(hparams):
   
   return (x_train_in, y_train_in), (x_test_in, y_test_in), x_test_out, index
 
+
 def build_model(n_class, p_dropout=None):
   """Build the network of vgg for cifar.
   
@@ -69,130 +70,144 @@ def build_model(n_class, p_dropout=None):
 
   model.add(Conv2D(64, (3, 3), padding='same', 
                    input_shape=SHAPE,
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_1'))
+  model.add(Activation('relu', name='activation_1'))
+  model.add(BatchNormalization(name='batch_normalization_1'))
   if p_dropout is None:
-    model.add(Dropout(0.3))
+    model.add(Dropout(0.3, name='dropout_1'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_1'))
     
   model.add(Conv2D(64, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_2'))
+  model.add(Activation('relu', name='activation_2'))
+  model.add(BatchNormalization(name='batch_normalization_2'))
 
-  model.add(MaxPooling2D(pool_size=(2, 2)))
+  model.add(MaxPooling2D(pool_size=(2, 2), name='max_pooling2d_1'))
 
   model.add(Conv2D(128, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_3'))
+  model.add(Activation('relu', name='activation_3'))
+  model.add(BatchNormalization(name='batch_normalization_3'))
   if p_dropout is None:
-    model.add(Dropout(0.4))
+    model.add(Dropout(0.4, name='dropout_2'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_2'))
     
   model.add(Conv2D(128, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_4'))
+  model.add(Activation('relu', name='activation_4'))
+  model.add(BatchNormalization(name='batch_normalization_4'))
 
-  model.add(MaxPooling2D(pool_size=(2, 2)))
-
-  model.add(Conv2D(256, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
-  if p_dropout is None:
-    model.add(Dropout(0.4))
-  else:
-    model.add(PermaDropout(p_dropout))
+  model.add(MaxPooling2D(pool_size=(2, 2), name='max_pooling2d_2'))
 
   model.add(Conv2D(256, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_5'))
+  model.add(Activation('relu', name='activation_5'))
+  model.add(BatchNormalization(name='batch_normalization_5'))
   if p_dropout is None:
-    model.add(Dropout(0.4))
+    model.add(Dropout(0.4, name='dropout_3'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_3'))
 
   model.add(Conv2D(256, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_6'))
+  model.add(Activation('relu', name='activation_6'))
+  model.add(BatchNormalization(name='batch_normalization_6'))
+  if p_dropout is None:
+    model.add(Dropout(0.4, name='dropout_4'))
+  else:
+    model.add(PermaDropout(p_dropout, name='dropout_4'))
 
-  model.add(MaxPooling2D(pool_size=(2, 2)))
+  model.add(Conv2D(256, (3, 3), padding='same',
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_7'))
+  model.add(Activation('relu', name='activation_7'))
+  model.add(BatchNormalization(name='batch_normalization_7'))
+
+  model.add(MaxPooling2D(pool_size=(2, 2), name='max_pooling2d_3'))
 
 
   model.add(Conv2D(512, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_8'))
+  model.add(Activation('relu', name='activation_8'))
+  model.add(BatchNormalization(name='batch_normalization_8'))
   if p_dropout is None:
-    model.add(Dropout(0.4))
+    model.add(Dropout(0.4, name='dropout_5'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_5'))
 
   model.add(Conv2D(512, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_9'))
+  model.add(Activation('relu', name='activation_9'))
+  model.add(BatchNormalization(name='batch_normalization_9'))
   if p_dropout is None:
-    model.add(Dropout(0.4))
+    model.add(Dropout(0.4, name='dropout_6'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_6'))
 
   model.add(Conv2D(512, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_10'))
+  model.add(Activation('relu', name='activation_10'))
+  model.add(BatchNormalization(name='batch_normalization_10'))
 
-  model.add(MaxPooling2D(pool_size=(2, 2)))
-
-  model.add(Conv2D(512, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
-  if p_dropout is None:
-    model.add(Dropout(0.4))
-  else:
-    model.add(PermaDropout(p_dropout))
+  model.add(MaxPooling2D(pool_size=(2, 2), name='max_pooling2d_4'))
 
   model.add(Conv2D(512, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_11'))
+  model.add(Activation('relu', name='activation_11'))
+  model.add(BatchNormalization(name='batch_normalization_11'))
   if p_dropout is None:
-    model.add(Dropout(0.4))
+    model.add(Dropout(0.4, name='dropout_7'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_7'))
 
   model.add(Conv2D(512, (3, 3), padding='same',
-                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization())
-
-  model.add(MaxPooling2D(pool_size=(2, 2)))
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_12'))
+  model.add(Activation('relu', name='activation_12'))
+  model.add(BatchNormalization(name='batch_normalization_12'))
   if p_dropout is None:
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.4, name='dropout_8'))
   else:
-    model.add(PermaDropout(p_dropout))
+    model.add(PermaDropout(p_dropout, name='dropout_8'))
 
-  model.add(Flatten())
-  model.add(Dense(512,kernel_regularizer=regularizers.l2(WEIGHT_DECAY)))
-  model.add(Activation('relu'))
-  model.add(BatchNormalization(name='features_layer'))
+  model.add(Conv2D(512, (3, 3), padding='same',
+                   kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                   name='conv2d_13'))
+  model.add(Activation('relu', name='activation_13'))
+  model.add(BatchNormalization(name='batch_normalization_13'))
+
+  model.add(MaxPooling2D(pool_size=(2, 2), name='max_pooling2d_5'))
+  
+  if p_dropout is None:
+    model.add(Dropout(0.5, name='dropout_9'))
+  else:
+    model.add(PermaDropout(p_dropout, name='dropout_9'))
+
+  model.add(Flatten(name='flatten_1'))
+  model.add(Dense(512,kernel_regularizer=regularizers.l2(WEIGHT_DECAY),
+                  name='dense_1'))
+  model.add(Activation('relu', name='activation_14'))
+  model.add(BatchNormalization(name='batch_normalization_14'))
 
   if p_dropout is None:
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.5, name='dropout_10'))
   else:
-    model.add(PermaDropout(p_dropout))
-  model.add(Dense(n_class, name='ll_dense'))
-  model.add(Activation('softmax'))
+    model.add(PermaDropout(p_dropout, name='dropout_10'))
+  model.add(Dense(n_class, name='dense_2'))
+  model.add(Activation('softmax', name='activation_15'))
   return model
-
 
 def whitening(x_train):
   """Normalize inputs for zero mean and unit variance.
@@ -219,6 +234,29 @@ def normalize(x, mean, std):
   """
   return (x - mean)/(std + 1e-7)
 
+#def onepoint(argv):
+#  
+#  hparams = {}
+#  
+#  hparams['dataset'] = 'cifar100-first-100'
+#  hparams['n_class'] = 100
+#  hparams['method'] = 'first'
+#  lr = 0.1
+#  
+#  model = build_model(100, p_dropout=0.5)
+#  model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+#  model.load_weights(model_path, by_name=True)
+#  
+#  model.compile(optimizer=keras.optimizers.SGD(lr=lr),
+#              loss='categorical_crossentropy', 
+#              metrics=['accuracy'])
+#  
+#  (features_train_in, y_train_in), (features_val_in, y_val_in), \
+#    features_val_out, index = input_data(hparams)
+#  
+#  score = model.evaluate(features_val_in, y_val_in, verbose=1)
+#  print('Test loss:', score[0])
+#  print('Test accuracy:', score[1])
 
 def sgd_sgld(hparams):  
   
@@ -292,6 +330,7 @@ def sgd_sgld(hparams):
     
   model = build_model(n_class)
   model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+#  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
   
   #data augmentation
   datagen = ImageDataGenerator(
@@ -311,13 +350,23 @@ def sgd_sgld(hparams):
   for opt, optimizer in zip(['sgd', 'sgld'], 
                             [keras.optimizers.SGD(lr=lr), 
                              sgld.SGLD(features_train_in.shape[0], lr=lr)]):
-    model.load_weights(model_path, by_name=True)
+#  for opt, optimizer in zip(['sgld'], 
+#                          [sgld.SGLD(features_train_in.shape[0], lr=lr)]):
+    model.load_weights(model_path)
     params['optimizer'] = opt
     model.compile(optimizer=optimizer,
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
     mc = Prediction(params, features_val_in, features_val_out)
-  
+#    tensorboard = keras.callbacks.TensorBoard(histogram_freq=2,
+#                                              batch_size=128,
+#                                              write_graph=False,
+#                                              write_grads=False,
+#                                              )
+    
+#    score = model.evaluate(features_val_in, y_val_in)
+#    print(score)
+    
     hist = model.fit_generator(datagen.flow(features_train_in, y_train_in, 
                                             batch_size=batch_size),
                      steps_per_epoch=features_train_in.shape[0] // batch_size,
@@ -350,6 +399,7 @@ def bootstrap(hparams):
 
   model = build_model(n_class)
   model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+#  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
 
   model.compile(optimizer=keras.optimizers.SGD(lr=lr),
                 loss='categorical_crossentropy', 
@@ -392,7 +442,7 @@ def bootstrap(hparams):
   for i in np.arange(samples):
     bootstrap_features_train_in, bootstrap_y_train_in = \
       util.bootstrap(features_train_in, y_train_in)
-    model.load_weights(model_path, by_name=True)
+    model.load_weights(model_path) #, by_name=True)
     model.fit_generator(datagen.flow(bootstrap_features_train_in, 
                                      bootstrap_y_train_in,
                                      batch_size=batch_size),
@@ -437,6 +487,7 @@ def dropout(hparams):
 
   model = build_model(n_class, p_dropout=p_dropout)
   model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+#  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
 
   model.compile(optimizer=keras.optimizers.SGD(lr=lr),
                 loss='categorical_crossentropy', 
@@ -476,7 +527,7 @@ def dropout(hparams):
                                         # dtype='f2',
                                         compression='gzip')      
 
-  model.load_weights(model_path, by_name=True)
+  model.load_weights(model_path) #, by_name=True)
   model.fit_generator(datagen.flow(features_train_in, y_train_in,
                                    batch_size=batch_size),
             steps_per_epoch=features_train_in.shape[0] // batch_size,
@@ -516,23 +567,26 @@ def main(argv):
   p_dropout: 0.2, 0.3, 0.4, 0.5 
   """
   
-  hparams = {'dataset': 'cifar10-first-10',
+  hparams = {'dataset': 'cifar100-first-100',
              'algorithm': algo,
-             'n_class': 10,
+             'n_class': 100,
              'method': 'first'
             }
   
   list_batch_size = [128]
-  list_lr = [0.001, 0.0005, 0.0001, 0.00005, 0.00001]
+  list_lr = [0.01, 0.001, 0.0001, 0.00001]
   
   if algo == 'sgdsgld': 
-    list_samples = [10, 100, 1000]
+#    list_lr = [0.0001]
+    list_samples = [100]
   elif algo == 'dropout':
-    list_samples = [10, 100, 1000]
+#    list_lr = [0.005]
+    list_samples = [100]
     list_epochs = [100]
     list_p_dropout = [0.1, 0.3, 0.5]
   elif algo == 'bootstrap':
-    list_samples = [10, 100]
+#    list_lr = [0.0005]
+    list_samples = [10]
     list_epochs = [10]
   else:
     raise ValueError('this algorithm is not supported')
