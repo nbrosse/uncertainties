@@ -360,68 +360,64 @@ def sec_classification(y_true, y_pred, conf):
   return dic
 
 
-#def sec_classification_comb(y_true, y_pred, conf_1, conf_2):
-#  """Compute the AURC using a combination of 2 uncertainties measures.
-#
-#  Args:
-#    y_true: true labels, vector of size n_test
-#    y_pred: predicted labels by the classifier, vector of size n_test
-#    conf: confidence associated to y_pred, vector of size n_test
-#  Returns:
-#    dic: dictionary 
-#      conf: confidence sorted (in decreasing order)
-#      risk_cov: risk vs coverage (increasing coverage from 0 to 1)
-#      aurc: AURC
-#      eaurc: Excess AURC
-#  """
-#  n = len(y_true)
-#  ind_1 = np.argsort(conf_1)[::-1]
-#  ind_2 = np.argsort(conf_2)[::-1]
-#  
-#  conf_1_sorted = conf_1[ind_1]
-#  conf_2_sorted = conf_2[ind_2]
-#  
-#  argsort_ind_1 = np.argsort(ind_1)
-#  
-#  indices = argsort_ind_1[ind_2]
-#  
-#  indices_triang = np.zeros((n, n))
-#  risk_triang = np.zeros((n, n))
-#  risk_triang[:] = np.nan
-#  
-#  for i in np.arange(n):
-#    print(i)
-#    if i == 0:
-#      sort_indices = np.array([indices[0]])
-#    else:
-#      j = np.searchsorted(sort_indices, indices[i])
-#      new_sort_indices = np.zeros(i + 1)
-#      new_sort_indices[:j] = sort_indices[:j]
-#      new_sort_indices[j] = indices[i]
-#      new_sort_indices[(j+1):] = sort_indices[j:]
-#      sort_indices = new_sort_indices
-#    indices_triang[i, :(i+1)] = sort_indices
-#    ind_risk = ind_1[sort_indices.astype(int)]
-#    risk_vec = y_true[ind_risk] != y_pred[ind_risk]
-#    risk_triang[i, :(i+1)] = np.cumsum(risk_vec)
-#  
-#  argmin_risk = np.nanargmin(risk_triang, axis=0)
-#  min_risk = np.nanmin(risk_triang, axis=0)
-#  
-#  results = np.zeros((3, n))
-#  results[0, :] = np.divide(min_risk, np.arange(1, n+1).astype(float))
-#  results[1, :] = conf_2_sorted[argmin_risk.astype(int)]
-#  results[2, :] = conf_1_sorted[indices_triang[[argmin_risk.astype(int), np.arange(n)]].astype(int)]
-#  
-##  plt.figure(figsize=(20, 20))
-##  plt.plot(results[0, :], label='comb_std_softmax')
-##  plt.plot(dic_aurc['risk_cov_softmax']['risk_cov'], label='softmax')
-##  plt.plot(dic_aurc['risk_cov_std']['risk_cov'], label='std')
-##  plt.xlabel('coverage')
-##  plt.ylabel('risk')
-##  plt.legend()
-##  plt.show()
-#  return results
+def sec_classification_comb(y_true, y_pred, conf_1, conf_2):
+  """Compute the AURC using a combination of 2 uncertainties measures.
+
+  Args:
+    y_true: true labels, vector of size n_test
+    y_pred: predicted labels by the classifier, vector of size n_test
+    conf_1: one confidence measure associated to y_pred, vector of size n_test
+    conf_2: another confidence measure associated 
+            to y_pred, vector of size n_test
+  Returns:
+    results: numpy array of size (3, n_test)
+             results[0, :] contains the risk (increasing coverage)
+             results[1, :] contains the associated threshold for the 2nd 
+                           confidence measure
+             results[2, :] contains the associated threshold for the 1st 
+                           confidence measure
+  """
+  n = len(y_true)
+  ind_1 = np.argsort(conf_1)[::-1]
+  ind_2 = np.argsort(conf_2)[::-1]
+  
+  conf_1_sorted = conf_1[ind_1]
+  conf_2_sorted = conf_2[ind_2]
+  
+  argsort_ind_1 = np.argsort(ind_1)
+  
+  indices = argsort_ind_1[ind_2]
+  
+  indices_triang = np.zeros((n, n))
+  risk_triang = np.zeros((n, n))
+  risk_triang[:] = np.nan
+  
+  for i in np.arange(n):
+    print(i)
+    if i == 0:
+      sort_indices = np.array([indices[0]])
+    else:
+      j = np.searchsorted(sort_indices, indices[i])
+      new_sort_indices = np.zeros(i + 1)
+      new_sort_indices[:j] = sort_indices[:j]
+      new_sort_indices[j] = indices[i]
+      new_sort_indices[(j+1):] = sort_indices[j:]
+      sort_indices = new_sort_indices
+    indices_triang[i, :(i+1)] = sort_indices
+    ind_risk = ind_1[sort_indices.astype(int)]
+    risk_vec = y_true[ind_risk] != y_pred[ind_risk]
+    risk_triang[i, :(i+1)] = np.cumsum(risk_vec)
+  
+  argmin_risk = np.nanargmin(risk_triang, axis=0)
+  min_risk = np.nanmin(risk_triang, axis=0)
+  
+  results = np.zeros((3, n))
+  results[0, :] = np.divide(min_risk, np.arange(1, n+1).astype(float))
+  results[1, :] = conf_2_sorted[argmin_risk.astype(int)]
+  results[2, :] = conf_1_sorted[indices_triang[[argmin_risk.astype(int), 
+         np.arange(n)]].astype(int)]
+  
+  return results
 
 def auroc_aupr(p_mean_in, p_mean_out,
                p_max_min_in, p_max_min_out,

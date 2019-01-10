@@ -1,4 +1,4 @@
-""" Hyperparameters search for the last layer algorithms.
+""" Hyperparameters search.
 """
 
 
@@ -318,7 +318,7 @@ def launch_auroc_aupr(experiment):
 #%% Launch the computation of the metrics
   
 def hyperparams_computation():
-  dataset = 'cifar100-first-100'
+  dataset = 'cifar100-first-50'
   output_dir = 'outputs/full_network/{}_*'.format(dataset)
   
   if dataset.split('-')[0] == 'imagenet':
@@ -336,7 +336,7 @@ def hyperparams_computation():
     list_experiments = temp
   
   
-  score_computed = 'AURC' # 'AUROC-AUPR', 'ECE', 'AURC'
+  score_computed = 'AUROC-AUPR' # 'AUROC-AUPR', 'ECE', 'AURC'
   
   print('---------------')
   print('Score computed: {}'.format(score_computed))
@@ -385,12 +385,13 @@ def hyperparams_computation():
     df = df.groupby('algorithm').apply(_f_auroc_aupr)
   else:
     raise ValueError('this quantity can not be computed.')
-  data_algo = list_experiments[0].split('/')[-1].split('_')[:2]
-  df.to_pickle(os.path.join('outputs/full_network', '_'.join(data_algo)) + '.pkl')  
+#  data_algo = list_experiments[0].split('/')[-1].split('_')[:2]
+  data_algo = list_experiments[0].split('/')[-1].split('_')[0]
+  df.to_pickle(os.path.join('outputs/full_network', '_'.join(data_algo)) + '_fullnetwork.pkl')  
   print('End')
   
 
-hyperparams_computation()
+#hyperparams_computation()
 
 #%% Postprocessing the hyperparams search
 
@@ -413,13 +414,14 @@ def postprocess_algos(dataset):
   
   return df, df_sec
 
+
 def postprocess_dfs_aurc():
   
   dfs = {}
   
   for dataset in ['mnist-first-10', 'cifar10-first-10', 'cifar100-first-100']:
     path_ll = 'outputs/{}_hyperparams/{}_hparams.pkl'.format(dataset, dataset)
-    path_full = 'outputs/{}_hyperparams/{}_fullnetwork.pkl'.format(dataset, dataset)
+    path_full = 'outputs/{}_hyperparams/{}_hparams_fullnetwork.pkl'.format(dataset, dataset)
     
     with open('outputs/last_layer/{}_onepoint/'
               'metrics_dic.pkl'.format(dataset), 'rb') as f:
@@ -437,16 +439,17 @@ def postprocess_dfs_aurc():
     df_full = pd.read_pickle(path_full)
     df_full['algorithm'] = df_full['algorithm'] + '_full'
     df = df_ll.loc[df_ll['increase_aurc'] == 1, :].copy()
+    df_full_sec = df_full.loc[df_full['increase_aurc'] == 1, :].copy()
     df = df.append(df_onepoint, sort=True)
-    df = df.append(df_full, sort=True)
-    df['increase_auroc'] = df['min_aurc'].divide(df['min_aurc'].min())
-    df['increase_ece'] = df['ece'].divide(df['ece'].min())
+    df = df.append(df_full_sec, sort=True)
+    df['increase_aurc'] = df['min_aurc'].divide(df['min_aurc'].min())
     dfs[dataset] = df
     # Compressed view
 #    dfs[dataset] = dfs[dataset][['algorithm', 'lr', 's', 'min_aurc', 
 #       'increase_aurc', 'ece', 'increase_ece', 'ep', 'pdrop']]
     
-  df_total = pd.concat([dfs[dataset] for dataset in ['mnist-first-10', 'cifar10-first-10', 'cifar100-first-100']], axis=0)
+  df_total = pd.concat([dfs[dataset] for dataset in ['mnist-first-10', 'cifar10-first-10', 'cifar100-first-100']], 
+                       axis=0, ignore_index=True)
   df_total.to_csv('outputs/aurc.csv')
   
   return df_total
@@ -458,7 +461,7 @@ def postprocess_dfs_auroc_aupr():
   
   for dataset in list_datasets:
     path_ll = 'outputs/{}_hyperparams/{}_hparams.pkl'.format(dataset, dataset)
-#    path_full = 'outputs/{}_hyperparams/{}_fullnetwork.pkl'.format(dataset, dataset)
+    path_full = 'outputs/{}_hyperparams/{}_hparams_fullnetwork.pkl'.format(dataset, dataset)
     
     with open('outputs/last_layer/{}_onepoint/'
               'metrics_dic.pkl'.format(dataset), 'rb') as f:
@@ -476,11 +479,12 @@ def postprocess_dfs_auroc_aupr():
     df_onepoint = pd.DataFrame.from_dict(dic_onepoint)
     
     df_ll = pd.read_pickle(path_ll)
-#    df_full = pd.read_pickle(path_full)
-#    df_full['algorithm'] = df_full['algorithm'] + '_full'
+    df_full = pd.read_pickle(path_full)
+    df_full['algorithm'] = df_full['algorithm'] + '_full'
     df = df_ll.loc[df_ll['increase_auroc'] == 1, :].copy()
+    df_full_sec = df_full.loc[df_full['increase_auroc'] == 1, :].copy()
     df = df.append(df_onepoint, sort=True)
-#    df = df.append(df_full, sort=True)
+    df = df.append(df_full_sec, sort=True)
     df['increase_auroc'] = df['max_auroc'].divide(df['max_auroc'].max())
     df['increase_aupr_in'] = df['max_aupr_in'].divide(df['max_aupr_in'].max())
     df['increase_aupr_out'] = df['max_aupr_out'].divide(df['max_aupr_out'].max())

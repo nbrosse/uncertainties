@@ -329,8 +329,10 @@ def sgd_sgld(hparams):
         self.file_out.close()
     
   model = build_model(n_class)
-  model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
-#  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
+  if hparams['dataset'] in ['cifar10-first-10', 'cifar100-first-100']:
+    model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+  else:
+    model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
   
   #data augmentation
   datagen = ImageDataGenerator(
@@ -398,8 +400,10 @@ def bootstrap(hparams):
   samples = hparams['samples']
 
   model = build_model(n_class)
-  model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
-#  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
+  if hparams['dataset'] in ['cifar10-first-10', 'cifar100-first-100']:
+    model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+  else:
+    model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
 
   model.compile(optimizer=keras.optimizers.SGD(lr=lr),
                 loss='categorical_crossentropy', 
@@ -486,8 +490,10 @@ def dropout(hparams):
   p_dropout = hparams['p_dropout']
 
   model = build_model(n_class, p_dropout=p_dropout)
-  model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
-#  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
+  if hparams['dataset'] in ['cifar10-first-10', 'cifar100-first-100']:
+    model_path = 'saved_models/cifar-full-network/{}vgg.h5'.format(hparams['dataset'].split('-')[0])
+  else:
+    model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], hparams['dataset'].split('-')[0])
 
   model.compile(optimizer=keras.optimizers.SGD(lr=lr),
                 loss='categorical_crossentropy', 
@@ -567,9 +573,9 @@ def main(argv):
   p_dropout: 0.2, 0.3, 0.4, 0.5 
   """
   
-  hparams = {'dataset': 'cifar100-first-100',
+  hparams = {'dataset': 'cifar100-first-50',
              'algorithm': algo,
-             'n_class': 100,
+             'n_class': 50,
              'method': 'first'
             }
   
@@ -577,7 +583,7 @@ def main(argv):
   list_lr = [0.01, 0.001, 0.0001, 0.00001]
   
   if algo == 'sgdsgld': 
-#    list_lr = [0.0001]
+#    list_lr = [1e-4]
     list_samples = [100]
   elif algo == 'dropout':
 #    list_lr = [0.005]
