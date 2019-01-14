@@ -263,6 +263,7 @@ def bootstrap(hparams):
     file_out.close()
   print('End of sampling - bootstrap.')
 
+
 def dropout(hparams):
   
   output_dir = util.create_run_dir('outputs/last_layer/', hparams)

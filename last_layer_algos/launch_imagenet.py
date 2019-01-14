@@ -1,5 +1,4 @@
 """Specific version of launch for ImageNet using tfrecords.
-Work in progress.
 """
 
 #%% Imports
@@ -8,17 +7,15 @@ import os
 import gc
 import glob
 from absl import app
-import itertools
+#import itertools
 import h5py
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input
-from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.models import Model
 import keras
 
-#from utils.dropout_layer import PermaDropout
-#import utils.sgld as sgld
 import utils.tf_sgld as tf_sgld
 import utils.util as util
 
@@ -30,16 +27,22 @@ NUM_TRAINING_EXAMPLES = 1281167
 NUM_TEST_EXAMPLES = 50000
 N_CLASS = 1000
 
+# https://stackoverflow.com/questions/6773584/how-is-pythons-glob-glob-ordered
+
 #%% Algorithms
 
-def input_data(hparams):
-  features_dir_train = '/home/nbrosse/features_imagenet/train/train-*'
-  features_dir_val = '/home/nbrosse/features_imagenet/test/test-*'
+def input_data(hparams, bootstrap=False):
+  features_dir_train = '/home/nbrosse/features_imagenet_nasnet/train/train-*'
+  features_dir_val = '/home/nbrosse/features_imagenet_nasnet/test/test-*'
   
   batch_size = hparams['batch_size']
   
-  file_list_train = glob.glob(features_dir_train) 
-  file_list_val = glob.glob(features_dir_val) 
+  file_list_train = sorted(glob.glob(features_dir_train)) 
+  file_list_val = sorted(glob.glob(features_dir_val)) 
+  
+  if bootstrap:
+    file_list_train = list(np.random.choice(file_list_train, 
+                                            len(file_list_train)))
   
   def parse_proto(example_proto, d=DIM):
     features = {
@@ -68,31 +71,42 @@ def input_data(hparams):
   
   return dataset_train, dataset_val
 
-def build_last_layer(n, d, num_classes, p_dropout=None):
+def build_last_layer(n=NUM_TRAINING_EXAMPLES, d=DIM, num_classes=N_CLASS, 
+                     p_dropout=None, num_last_layers=1):
   """Build the last layer keras model.
-  
-  Args:
-    features_train: features of the trainig set.
-    num_classes: int, number of classes.
-    p_dropout: float between 0 and 1. Fraction of the input units to drop.
-  Returns:
-    submodel: last layer model.
   """
   features_shape = (d,)
   if p_dropout is not None:
     x = Input(shape=features_shape, name='ll_input')
-#    y = PermaDropout(p_dropout, name='ll_dropout')(x)
-    y = tf.layers.dropout(x, rate=p_dropout, training=True, name='ll_dropout')
-    y = Dense(num_classes, activation='softmax', name='ll_dense',
-              kernel_regularizer=tf.keras.regularizers.l2(1./n),
-              bias_regularizer=tf.keras.regularizers.l2(1./n))(y)
+    y = x
+    for i in np.arange(num_last_layers, 0, -1, dtype=int):
+      y = tf.layers.dropout(y, rate=p_dropout, training=True, 
+                            name='ll_dropout_{}'.format(i))
+      if i > 1:
+        y = Dense(d, activation='relu', name='ll_dense_{}'.format(i),
+                  kernel_regularizer=tf.keras.regularizers.l2(1./n),
+                  bias_regularizer=tf.keras.regularizers.l2(1./n))(y)
+      else:
+        y = Dense(num_classes, activation='softmax', 
+                  name='ll_dense_{}'.format(i),
+                  kernel_regularizer=tf.keras.regularizers.l2(1./n),
+                  bias_regularizer=tf.keras.regularizers.l2(1./n))(y)
     model = Model(inputs=x, outputs=y)
   else:
-    model = Sequential()
-    model.add(Dense(num_classes, activation='softmax', 
-                    input_shape=features_shape, name='ll_dense',
-                    kernel_regularizer=tf.keras.regularizers.l2(1./n),
-                    bias_regularizer=tf.keras.regularizers.l2(1./n)))
+    x = Input(shape=features_shape, name='ll_input')
+    y = x
+    for i in np.arange(num_last_layers, 0, -1, dtype=int):
+      if i > 1:
+        y = Dense(d, activation='relu', name='ll_dense_{}'.format(i),
+                  kernel_regularizer=tf.keras.regularizers.l2(1./n),
+                  bias_regularizer=tf.keras.regularizers.l2(1./n))(y)
+      else:
+        y = Dense(num_classes, activation='softmax', 
+                  name='ll_dense_{}'.format(i),
+                  kernel_regularizer=tf.keras.regularizers.l2(1./n),
+                  bias_regularizer=tf.keras.regularizers.l2(1./n))(y)
+    model = Model(inputs=x, outputs=y)
+  
   return model
 
 config_cpu = tf.ConfigProto(device_count = {'GPU': 0})
@@ -110,7 +124,87 @@ def compute_y(hparams):
 
   return y_aggr
 
-def sgd_sgld(hparams, only_sgld=True):  
+def initial_training(hparams):
+  
+  dataset_train, dataset_val = input_data(hparams)
+    
+  samples = hparams['samples']
+  batch_size = hparams['batch_size']
+  nb_last_layers = hparams['nb_last_layers']
+
+  model_path = 'saved_models/{}/{}_last_layer_{}.h5'.format(hparams['dataset'], 
+                             hparams['dataset'].split('-')[0], nb_last_layers)
+
+  modelcheckpoint = tf.keras.callbacks.ModelCheckpoint(model_path, 
+                                                       monitor='val_acc',
+                                                       save_best_only=True,
+                                                       save_weights_only=True)
+
+  
+  model = build_last_layer(num_last_layers=nb_last_layers)
+  
+  optimizer = tf.keras.optimizers.Adam()
+
+  model.compile(optimizer=optimizer,
+                loss='categorical_crossentropy',
+                metrics=['accuracy'])
+  
+  hist = model.fit(dataset_train,
+                   epochs=samples,
+                   steps_per_epoch=NUM_TRAINING_EXAMPLES // batch_size,
+                   verbose=1,
+                   validation_data=dataset_val,
+                   validation_steps=NUM_TEST_EXAMPLES // batch_size,
+                   callbacks=[modelcheckpoint])
+  
+  print('End of Training.')
+  
+  del model 
+  gc.collect()
+  return hist
+
+
+def onepoint(hparams):
+  
+  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
+  
+  dataset_train, dataset_val = input_data(hparams)
+    
+  n_class = N_CLASS
+  lr = hparams['lr']
+  batch_size = hparams['batch_size']
+  nb_last_layers = hparams['nb_last_layers']
+  
+  model = build_last_layer(num_last_layers=nb_last_layers)
+  model_path = 'saved_models/{}/{}_last_layer_{}.h5'.format(hparams['dataset'], 
+                             hparams['dataset'].split('-')[0], nb_last_layers)
+  
+  # Useless in normal situation but needed here for technical reason.
+  model.compile(optimizer=tf.keras.optimizers.SGD(lr=lr),
+                loss='categorical_crossentropy', 
+                metrics=['accuracy'])
+
+  model.load_weights(model_path, by_name=True)
+  
+  name_in = os.path.join(output_dir, 'p_in.h5')
+  file_in = h5py.File(name_in, 'a')
+  shape_in = ((NUM_TEST_EXAMPLES // batch_size) * batch_size,
+              n_class, 
+              1)
+  proba_in = file_in.create_dataset('proba', 
+                                    shape_in,
+                                    # dtype='f2',
+                                    compression='gzip')
+
+  proba_in[:, :, 0] = model.predict(dataset_val, 
+                                    steps=NUM_TEST_EXAMPLES // batch_size)
+    
+  file_in.close()
+  del model
+  gc.collect()
+
+
+def sgd_sgld(hparams):  
   
   output_dir = util.create_run_dir('outputs/last_layer/', hparams)
   util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
@@ -121,6 +215,7 @@ def sgd_sgld(hparams, only_sgld=True):
   samples = hparams['samples']
   lr = hparams['lr']
   batch_size = hparams['batch_size']
+  nb_last_layers = hparams['nb_last_layers']
 
   params = {'optimizer': None,
             'samples': samples,
@@ -161,16 +256,15 @@ def sgd_sgld(hparams, only_sgld=True):
     def on_train_end(self, logs={}):
       self.file_in.close()
     
-  model = build_last_layer(n=NUM_TRAINING_EXAMPLES, 
-                           d=DIM, num_classes=N_CLASS)
-  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
-                             hparams['dataset'].split('-')[0])
+  model = build_last_layer(num_last_layers=nb_last_layers)
+  model_path = 'saved_models/{}/{}_last_layer_{}.h5'.format(hparams['dataset'], 
+                             hparams['dataset'].split('-')[0], nb_last_layers)
 
   for opt, optimizer in zip(['sgd', 'sgld'], 
                             [tf.keras.optimizers.SGD(lr=lr), 
                              tf_sgld.SGLD(NUM_TRAINING_EXAMPLES, lr=lr)]):
-    if (opt == 'sgd') & only_sgld:
-      continue
+#    if (opt == 'sgd') & only_sgld:
+#      continue
     model.load_weights(model_path, by_name=True)
     params['optimizer'] = opt
     model.compile(optimizer=optimizer,
@@ -192,6 +286,63 @@ def sgd_sgld(hparams, only_sgld=True):
   return hist
 
 
+def bootstrap(hparams):
+  
+  output_dir = util.create_run_dir('outputs/last_layer/', hparams)
+  util.write_to_csv(os.path.join(output_dir, 'hparams.csv'), hparams)
+  
+  dataset_train, dataset_val = input_data(hparams)
+    
+  epochs = hparams['epochs']
+  lr = hparams['lr']
+  batch_size = hparams['batch_size']
+  samples = hparams['samples']
+  p_dropout = hparams['p_dropout']
+  nb_last_layers = hparams['nb_last_layers']
+
+  model = build_last_layer(p_dropout=p_dropout,
+                           num_last_layers=nb_last_layers)
+  
+  model_path = 'saved_models/{}/{}_last_layer_{}.h5'.format(hparams['dataset'], 
+                             hparams['dataset'].split('-')[0], nb_last_layers)
+
+  model.compile(optimizer=tf.keras.optimizers.SGD(lr=lr),
+                loss='categorical_crossentropy', 
+                metrics=['accuracy'])
+  
+  name_in = os.path.join(output_dir, 'p_in.h5')
+  file_in = h5py.File(name_in, 'a')
+  
+  shape_in = ((NUM_TEST_EXAMPLES // batch_size) * batch_size,
+              N_CLASS, 
+              samples)
+  
+  proba_in = file_in.create_dataset('proba', 
+                                    shape_in,
+                                    # dtype='f2',
+                                    compression='gzip')  
+
+  for i in np.arange(samples):
+    dataset_train, dataset_val = input_data(hparams, bootstrap=True)
+    model.load_weights(model_path, by_name=True)
+    hist = model.fit(dataset_train,
+                     epochs=epochs,
+                     steps_per_epoch=NUM_TRAINING_EXAMPLES // batch_size,
+                     verbose=1,
+                     validation_data=dataset_val,
+                     validation_steps=NUM_TEST_EXAMPLES // batch_size
+                     )
+    print('End of boostrap {}'.format(i))
+
+    # computing probabilities
+    proba_in[:, :, i] = model.predict(dataset_val,
+            steps=NUM_TEST_EXAMPLES // batch_size)
+  
+  file_in.close()
+  del model
+  gc.collect()  
+  print('End of sampling - bootstrap.')
+
 def dropout(hparams):
   
   output_dir = util.create_run_dir('outputs/last_layer/', hparams)
@@ -199,19 +350,18 @@ def dropout(hparams):
   
   dataset_train, dataset_val = input_data(hparams)
     
-  n_class = N_CLASS
   epochs = hparams['epochs']
   lr = hparams['lr']
   batch_size = hparams['batch_size']
   samples = hparams['samples']
   p_dropout = hparams['p_dropout']
+  nb_last_layers = hparams['nb_last_layers']
 
-  model = build_last_layer(n=NUM_TRAINING_EXAMPLES, 
-                           d=DIM, 
-                           num_classes=n_class,
-                           p_dropout=p_dropout)
-  model_path = 'saved_models/{}/{}.h5'.format(hparams['dataset'], 
-                             hparams['dataset'].split('-')[0])
+  model = build_last_layer(p_dropout=p_dropout,
+                           num_last_layers=nb_last_layers)
+  
+  model_path = 'saved_models/{}/{}_last_layer_{}.h5'.format(hparams['dataset'], 
+                             hparams['dataset'].split('-')[0], nb_last_layers)
 
   model.compile(optimizer=tf.keras.optimizers.SGD(lr=lr),
                 loss='categorical_crossentropy', 
@@ -251,111 +401,80 @@ def dropout(hparams):
 
 #%% Sample
 
+def launch_training(argv):
+  
+  nb_last_layers = int(argv[1])
+  
+  hparams = {'dataset': 'imagenet-first-1000',
+             'samples': 20,
+             'batch_size': 512,
+             'nb_last_layers': nb_last_layers,
+             }
+  
+  hist = initial_training(hparams)
+
 def main(argv):
-#  del argv
-  algorithm = 'dropout' # argv[1]
-  batch_size = 512 # int(argv[2])
+
+  algorithm = 'bootstrap' # argv[1]
+  nb_last_layers = int(argv[1])
+  lr = float(argv[2])
   
-  # Hyperparameters
-  """
-  dataset: mnist, cifar10, cifar100, diabetic, imagenet under the form 
-           mnist-{first, last, random}-{n_class}, etc.
-  algorithm: sgdsgld, bootstrap, dropout
-  epochs: 10, 100, 1000, 10000 (= samples for dropout and bootstrap)
-  batch_size: 32, 64, 128
-  lr: 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001
-  p_dropout: 0.2, 0.3, 0.4, 0.5 
-  """
-  
+#  algorithm = 'dropout'  
+#  nb_last_layers = 1
+
+  batch_size = 512 
   dataset = 'imagenet-first-1000'
   
-#  hparams = {'dataset': 'mnist-first-10',
-#             'algorithm': 'sgdsgld',
-#             'epochs': 10,
-#             'batch_size': 64,
-#             'lr': 0.001,
-#             'p_dropout': 0.5,
-#             'samples': 1000
-#            }
-#  
-#  sgd_sgld(hparams)
-  
-  if algorithm == 'sgdsgld': 
-    # 4 sim
-    list_samples = [100]
-    list_lr = [0.01]
-  
-#    list_epochs = [100]
-#    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-  elif algorithm == 'dropout':
-    list_samples = [100]
-    list_lr = [0.01]
-  
-    list_epochs = [100]
-    list_p_dropout = [0.1]
-#  elif algorithm == 'bootstrap':
-#    # 10
-#    list_dataset = ['cifar100-first-100']
-#    list_algorithms = ['bootstrap']
-#    list_samples = [10, 100]
-#    list_batch_size = [128]
-#    list_lr = [0.001, 0.005, 0.0001, 0.00005, 0.00001]
-#  
-#    list_epochs = [10]
-#    list_p_dropout = [0.1, 0.2, 0.3, 0.4, 0.5]
-  else:
-    raise ValueError('this algorithm is not supported')
-
   hparams = {'dataset': dataset,
              'algorithm': algorithm,
-             'batch_size': batch_size
+             'epochs': 10, 
+             'batch_size': batch_size,
+             'lr': lr, # modified later on
+             'p_dropout': 0.5, # modified later on
+             'samples': 10, 
+             'nb_last_layers': nb_last_layers,
             }
   
-#  y_aggr = compute_y(hparams)
-#  
-#  np.save('y.npy', y_aggr)
-  
+  if algorithm == 'sgdsgld': 
+    list_lr = [0.1, 0.01, 0.001, 1e-4]
+  elif algorithm == 'dropout':
+    list_lr = [0.1, 0.01, 0.001, 1e-4]
+    list_p_dropout = [0.5] 
+  elif algorithm == 'onepoint':
+    onepoint(hparams)
+    return
+  elif algorithm == 'bootstrap':
+    bootstrap(hparams)
+    return
+  else:
+    raise ValueError('this algorithm is not supported')
+ 
   i = 0
   def smartprint(i):
     print('----------------------')
     print('End of {} step'.format(i))
     print('----------------------')
   
-  for samples, lr in itertools.product(list_samples, list_lr):
+  for lr in list_lr:
   
-    hparams = {'dataset': dataset,
-               'algorithm': algorithm,
-               'epochs': 100,
-               'batch_size': batch_size,
-               'lr': lr,
-               'p_dropout': 0.1,
-               'samples': samples
-              }
-    
-#    if algorithm == 'bootstrap':
-#      for epochs in list_epochs:
-#        hparams['epochs'] = epochs
-#        bootstrap(hparams)
-#        i += 1
-#        smartprint(i)
+    hparams['lr'] = lr
+        
     if algorithm == 'dropout':
-      for epochs, p_dropout in itertools.product(list_epochs, list_p_dropout):
-        hparams['epochs'] = epochs
+      for p_dropout in list_p_dropout:
         hparams['p_dropout'] = p_dropout
-        dropout(hparams)
-        i += 1
-        smartprint(i)
+        for nb_last_layers in [3]:
+          hparams['nb_last_layers'] = nb_last_layers
+          dropout(hparams)
+          i += 1
+          smartprint(i)
     if algorithm == 'sgdsgld':
       sgd_sgld(hparams)
       i += 1
       smartprint(i)
-#    else:
-#      raise ValueError('this algorithm is not supported')
     
-
     
 if __name__ == '__main__':
-  app.run(main)  # mnist, cifar10, cifar100
+  app.run(main) 
   
   
 

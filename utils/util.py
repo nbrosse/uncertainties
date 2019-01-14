@@ -43,6 +43,12 @@ def create_run_dir(path_dir, hparams):
   else:
     raise ValueError('This algorithm is not supported')
   
+  if 'nb_last_layers' in hparams.keys():
+    nb_last_layers = hparams['nb_last_layers']
+    path_split = path_name.split('_')
+    path_split.insert(1, 'nbll-{}'.format(nb_last_layers))
+    path_name = '_'.join(path_split)
+  
   path = os.path.join(path_dir, path_name)
 
   if os.path.isdir(path):

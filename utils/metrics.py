@@ -11,7 +11,9 @@ Compute:
                expected calibration error)
 - mean of the output predicted probabilities
 - std of the output predicted probabilities.
-- AURC and related metrics.
+- (max - min) of the output predicted probabilities.
+- AURC
+- AUROC and AUPR int/out
 """
 
 #%% Imports
@@ -24,28 +26,29 @@ import pickle
 from absl import app
 import os
 import h5py
-from psutil import virtual_memory
+import gc
+#from psutil import virtual_memory
 
 import numpy as np
 import scipy.stats as spstats
 import utils.util as util
 
-mem = virtual_memory()
-MEM = mem.total / 40.0 # max physical memory for us
+#mem = virtual_memory()
+#MEM = mem.total / 40.0 # max physical memory for us
 
-#%% functions to compute the metrics
+#%% Functions for metrics
 
-def metrics_from_h5file(y, h5file):
-  """Compute metrics from a (potentially very big) h5file.
+def metrics_from_h5file(y, h5file, nb_chunks=1):
+  """Compute in-distribution metrics from a (potentially very big) h5file.
   
   Args:
     y: true y, one-hot encoding size (n_test, n_class)
     h5file: path to the h5 file containing the tab of probabilities.
+    nb_chunks: int, number of chunks to divide the h5file if it is too big to 
+               read in one piece.
   Returns:
     result_dic: dict that contains the metrics.
   """
-  memsize = os.path.getsize(h5file)
-  nb_chunks = int(memsize // MEM + 1) 
   f = h5py.File(os.path.join(h5file), 'r')  # read mode
   h5data = f['proba']
   n_test, n_class, n_samples = h5data.shape
@@ -86,6 +89,9 @@ def metrics_from_h5file(y, h5file):
     ent_q.append(res_dic['ent_q'])
     mi.append(res_dic['mi'])
     
+    # Clear memory
+    del p_i, y_i
+    
   acc = np.mean(acc, axis=0)
   bs = np.mean(bs, axis=0)
   neglog = np.mean(neglog, axis=0)
@@ -98,9 +104,12 @@ def metrics_from_h5file(y, h5file):
   ent_q = np.concatenate(tuple(ent_q))
   mi = np.concatenate(tuple(mi))
   
+  # Clear memory
+  gc.collect()
+  
   cal = calibration(y, p_mean)
   
-  risk_cov = aurc(y, p_mean, p_std, q_tab)
+  risk_cov = aurc(y, p_mean, p_std, q_tab, p_max_min)
   
   result_dic = {}
   
@@ -117,23 +126,159 @@ def metrics_from_h5file(y, h5file):
               'mi': mi,  # n_test
               'risk_cov_std': risk_cov['risk_cov_std'], # conf, risk_cov, aurc, eaurc
               'risk_cov_softmax': risk_cov['risk_cov_softmax'],
+              'risk_cov_maxmin': risk_cov['risk_cov_maxmin'],
               'risk_cov_q': risk_cov['risk_cov_q']
               }
   
   f.close()
+  
+  # Clear memory 
+  del h5data
+  gc.collect()
+  
   return result_dic
 
 
-def metrics_ood_from_h5files(h5file_in, h5file_out):
-  """Compute metrics from a (potentially very big) h5file.
+def aurc_from_h5file(y, h5file, nb_chunks=1):
+  """Compute AURC from a (potentially very big) h5file.
   
   Args:
+    y: true y, one-hot encoding size (n_test, n_class)
     h5file: path to the h5 file containing the tab of probabilities.
+    nb_chunks: int, number of chunks to divide the h5file if it is too big to 
+               read in one piece.
   Returns:
     result_dic: dict that contains the metrics.
   """
-  memsize = np.maximum(os.path.getsize(h5file_in), os.path.getsize(h5file_out))
-  nb_chunks = int(memsize // MEM + 1) 
+  f = h5py.File(os.path.join(h5file), 'r')  # read mode
+  h5data = f['proba']
+  n_test, n_class, n_samples = h5data.shape
+  num_items_per_chunk = h5data.shape[0] // nb_chunks 
+  # number of chunks is equal to nb_chunks or nb_chunks + 1
+  if h5data.shape[0] % nb_chunks == 0:
+    num_chunks = nb_chunks # number of chunks is equal to nb_chunks
+  else:
+    num_chunks = nb_chunks + 1 # number of chunks is equal to nb_chunks + 1
+  print('----------------')
+  print('Reading file {} divided in {} chunks.'.format(h5file, num_chunks))
+  print('----------------')
+  p_mean, p_std, q_tab, p_max_min = [], [], [], []
+  for i in np.arange(nb_chunks + 1):
+    if i < nb_chunks:
+      p_i = h5data[i*num_items_per_chunk:(i+1)*num_items_per_chunk, :, :]
+    elif h5data.shape[0] % nb_chunks == 0:  # i == nb_chunks
+      # number of chunks is equal to nb_chunks
+      break
+    else:
+      # number of chunks is equal to nb_chunks + 1
+      p_i = h5data[i*num_items_per_chunk:, :, :]
+    p_mean.append(np.mean(p_i, axis=2))
+    p_max_min.append(np.max(p_i, axis=2) - np.min(p_i, axis=2))
+    p_std.append(np.std(p_i, axis=2))
+    q_tab.append(q_probability(p_i))
+    
+    # Clear memory
+    del p_i
+    
+  p_mean = np.vstack(tuple(p_mean))
+  p_max_min = np.vstack(tuple(p_max_min))
+  p_std = np.vstack(tuple(p_std))
+  q_tab = np.vstack(tuple(q_tab))
+  
+  # Clear memory
+  gc.collect()
+  
+  risk_cov = aurc(y, p_mean, p_std, q_tab, p_max_min)
+  
+  dic_aurc = {}
+  
+  for method in risk_cov.keys():
+    dic_aurc[method.split('_')[-1]] = risk_cov[method]['aurc']
+  
+  # Clear memory
+  del p_mean, p_std, q_tab, p_max_min
+  del risk_cov
+  
+  f.close()
+  
+  # Clear memory
+  del h5data
+  gc.collect()
+  
+  return dic_aurc
+
+
+def ece_from_h5file(y, h5file, nb_chunks=1):
+  """Compute AURC from a (potentially very big) h5file.
+  
+  Args:
+    y: true y, one-hot encoding size (n_test, n_class)
+    h5file: path to the h5 file containing the tab of probabilities.
+    nb_chunks: int, number of chunks to divide the h5file if it is too big to 
+               read in one piece.
+  Returns:
+    result_dic: dict that contains the metrics.
+  """
+  f = h5py.File(os.path.join(h5file), 'r')  # read mode
+  h5data = f['proba']
+  n_test, n_class, n_samples = h5data.shape
+  num_items_per_chunk = h5data.shape[0] // nb_chunks 
+  # number of chunks is equal to nb_chunks or nb_chunks + 1
+  if h5data.shape[0] % nb_chunks == 0:
+    num_chunks = nb_chunks # number of chunks is equal to nb_chunks
+  else:
+    num_chunks = nb_chunks + 1 # number of chunks is equal to nb_chunks + 1
+  print('----------------')
+  print('Reading file {} divided in {} chunks.'.format(h5file, num_chunks))
+  print('----------------')
+  p_mean = []
+  for i in np.arange(nb_chunks + 1):
+    if i < nb_chunks:
+      p_i = h5data[i*num_items_per_chunk:(i+1)*num_items_per_chunk, :, :]
+    elif h5data.shape[0] % nb_chunks == 0:  # i == nb_chunks
+      # number of chunks is equal to nb_chunks
+      break
+    else:
+      # number of chunks is equal to nb_chunks + 1
+      p_i = h5data[i*num_items_per_chunk:, :, :]
+    p_mean.append(np.mean(p_i, axis=2))
+    
+    # Clear memory
+    del p_i
+    
+  p_mean = np.vstack(tuple(p_mean))
+
+  # Clear memory
+  gc.collect()
+  
+  cal = calibration(y, p_mean)
+  
+  ece = cal['ece']
+  
+  # Clear memory
+  del cal, p_mean
+  
+  f.close()
+  
+  # Clear memory
+  del h5data
+  gc.collect()
+  
+  return ece
+
+
+def metrics_ood_from_h5files(h5file_in, h5file_out, nb_chunks=1):
+  """Compute metrics out-of-distribution from a (potentially very big) h5file.
+  
+  Args:
+    h5file_in: path to the h5 file containing the tab of probabilities for 
+               for in-distribution samples
+    h5file_out: path to the h5 file containing the tab of probabilities for
+                for out-of-distribution samples
+    nb_chunks: int, number of chuncks to divide the h5files
+  Returns:
+    result_dic: dict that contains the metrics.
+  """
   f_in = h5py.File(os.path.join(h5file_in), 'r')  # read mode
   f_out = h5py.File(os.path.join(h5file_out), 'r')  # read mode
   h5data_in = f_in['proba']
@@ -161,22 +306,27 @@ def metrics_ood_from_h5files(h5file_in, h5file_out):
     else:
       # number of chunks is equal to nb_chunks + 1
       p_i = h5data[i*num_items_per_chunk:, :, :]
-    p_i_mean = np.mean(p_i, axis=2)
-    p_i_std = np.std(p_i, axis=2)
-    p_i_max_min = np.max(p_i, axis=2) - np.min(p_i, axis=2)
-    q_i = q_probability(p_i)
-    p_mean.append(p_i_mean)
-    p_max_min.append(p_i_max_min)
-    p_std.append(p_i_std)
-    q_tab.append(q_i)
+    p_mean.append(np.mean(p_i, axis=2))
+    p_max_min.append(np.max(p_i, axis=2) - np.min(p_i, axis=2))
+    p_std.append(np.std(p_i, axis=2))
+    q_tab.append(q_probability(p_i))
+    
+    # Clear memory
+    del p_i
     
   p_mean_in = np.vstack(tuple(p_mean))
   p_max_min_in = np.vstack(tuple(p_max_min))
   p_std_in = np.vstack(tuple(p_std))
   q_tab_in = np.vstack(tuple(q_tab))
   
+  del p_mean, p_max_min, p_std, q_tab
+  
   # Out of distribution
   h5data = h5data_out
+  
+  # Clear memory
+  gc.collect()
+  
   n_test, n_class, n_samples = h5data.shape
   num_items_per_chunk = h5data.shape[0] // nb_chunks 
   # number of chunks is equal to nb_chunks or nb_chunks + 1
@@ -197,20 +347,17 @@ def metrics_ood_from_h5files(h5file_in, h5file_out):
     else:
       # number of chunks is equal to nb_chunks + 1
       p_i = h5data[i*num_items_per_chunk:, :, :]
-    p_i_mean = np.mean(p_i, axis=2)
-    p_i_std = np.std(p_i, axis=2)
-    p_i_max_min = np.max(p_i, axis=2) - np.min(p_i, axis=2)
-    q_i = q_probability(p_i)
-    p_mean.append(p_i_mean)
-    p_max_min.append(p_i_max_min)
-    p_std.append(p_i_std)
-    q_tab.append(q_i)
+    p_mean.append(np.mean(p_i, axis=2))
+    p_max_min.append(np.max(p_i, axis=2) - np.min(p_i, axis=2))
+    p_std.append(np.std(p_i, axis=2))
+    q_tab.append(q_probability(p_i))
     
   p_mean_out = np.vstack(tuple(p_mean))
   p_max_min_out = np.vstack(tuple(p_max_min))
   p_std_out = np.vstack(tuple(p_std))
   q_tab_out = np.vstack(tuple(q_tab))
 
+  del p_mean, p_max_min, p_std, q_tab
   
   
   result_dic = auroc_aupr(p_mean_in, p_mean_out, 
@@ -220,6 +367,12 @@ def metrics_ood_from_h5files(h5file_in, h5file_out):
   
   f_in.close()
   f_out.close()
+  
+  del h5data
+  del p_max_min_in, p_max_min_out, p_mean_in, p_mean_out
+  del p_std_in, p_std_out, q_tab_in, q_tab_out
+  gc.collect()
+  
   return result_dic
 
 
@@ -243,10 +396,11 @@ def compute_metrics(y, p_tab):
   bs = brier_score(y, p_tab)
   ent = entropy(p_mean)
   cal = calibration(y, p_mean)
-  res_aurc = aurc(y, p_mean, p_std, q_tab)
+  res_aurc = aurc(y, p_mean, p_std, q_tab, p_max_min)
   risk_cov_std = res_aurc['risk_cov_std']
   risk_cov_softmax = res_aurc['risk_cov_softmax']
   risk_cov_q = res_aurc['risk_cov_q']
+  risk_cov_maxmin = res_aurc['risk_cov_maxmin']
   
   result_dic = {'acc': acc,  # n_samples
                 'bs': bs,  # n_samples
@@ -261,6 +415,7 @@ def compute_metrics(y, p_tab):
                 'mi': mi,  # n_test
                 'risk_cov_std': risk_cov_std, # conf, risk_cov, aurc, eaurc
                 'risk_cov_softmax': risk_cov_softmax,
+                'risk_cov_maxmin': risk_cov_maxmin,
                 'risk_cov_q': risk_cov_q
                 }
   
@@ -283,11 +438,12 @@ def save_results(result_dic, path_dir, dic_name=None):
     pickle.dump(result_dic, handle, protocol=pickle.HIGHEST_PROTOCOL)
       
 
-def aurc(y, p_mean, p_std, q_tab):
+def aurc(y, p_mean, p_std, q_tab, p_max_min):
   """Compute the AURC, and other related metrics.
   
   Pairs of (classifier, confidence):
     - (argmax p_mean, - p_std(argmax p_mean))
+    - (argmax p_mean, - (p_max_min)(argmax p_mean))
     - (argmax p_mean, max p_mean)
     - (argmax q, -entropy(q))
 
@@ -299,12 +455,15 @@ def aurc(y, p_mean, p_std, q_tab):
            standard deviation of the output probabilities on the test dataset
     q_tab: numpy array (n_test, num_classes)
            q probability
+    p_max_min: numpy array (n_test, num_classes)
+               (max - min) of the output probabilities on the test dataset
   Returns:
     dic: dictionary 
          'risk_cov_std': result of sec_classification using 
                          -std of p as a confidence function,
          'risk_cov_softmax': using max p as a confidence function
          'risk_cov_q': using entropy of q as a confidence function.
+         'risk_cov_maxmin': using (max - min) of p as a confidence function.
   """
   # Classifier = max p probability
   # Confidence = - std of the max probability along the samples
@@ -312,6 +471,9 @@ def aurc(y, p_mean, p_std, q_tab):
   argmax_y = np.argmax(y, axis=1)
   conf = - p_std[np.arange(p_std.shape[0]), y_pred]
   risk_cov_std = sec_classification(argmax_y, y_pred, conf)
+  # Confidence = -(max - min) of the max probability along the samples
+  conf = - p_max_min[np.arange(p_max_min.shape[0]), y_pred]
+  risk_cov_maxmin = sec_classification(argmax_y, y_pred, conf)
   # Confidence = softmax response
   conf = np.max(p_mean, axis=1)
   risk_cov_softmax = sec_classification(argmax_y, y_pred, conf)
@@ -322,6 +484,7 @@ def aurc(y, p_mean, p_std, q_tab):
   risk_cov_q = sec_classification(argmax_y, y_pred, conf)
   
   dic = {'risk_cov_std': risk_cov_std,
+         'risk_cov_maxmin' : risk_cov_maxmin,
          'risk_cov_softmax': risk_cov_softmax,
          'risk_cov_q': risk_cov_q}
   
@@ -372,9 +535,9 @@ def sec_classification_comb(y_true, y_pred, conf_1, conf_2):
   Returns:
     results: numpy array of size (3, n_test)
              results[0, :] contains the risk (increasing coverage)
-             results[1, :] contains the associated threshold for the 2nd 
+             results[1, :] contains the associated threshold for the 1st 
                            confidence measure
-             results[2, :] contains the associated threshold for the 1st 
+             results[2, :] contains the associated threshold for the 2nd 
                            confidence measure
   """
   n = len(y_true)
@@ -388,12 +551,14 @@ def sec_classification_comb(y_true, y_pred, conf_1, conf_2):
   
   indices = argsort_ind_1[ind_2]
   
-  indices_triang = np.zeros((n, n))
-  risk_triang = np.zeros((n, n))
-  risk_triang[:] = np.nan
+  
+  indices_triang = np.zeros((n, n), dtype=np.uint16)
+  risk_triang = np.zeros((n, n), dtype=np.uint16)
+  risk_triang[:] = 60000
   
   for i in np.arange(n):
-    print(i)
+    if i % 1000 == 0:
+      print(i)
     if i == 0:
       sort_indices = np.array([indices[0]])
     else:
@@ -403,18 +568,19 @@ def sec_classification_comb(y_true, y_pred, conf_1, conf_2):
       new_sort_indices[j] = indices[i]
       new_sort_indices[(j+1):] = sort_indices[j:]
       sort_indices = new_sort_indices
-    indices_triang[i, :(i+1)] = sort_indices
+    indices_triang[i, :(i+1)] = sort_indices.astype(np.uint16)
     ind_risk = ind_1[sort_indices.astype(int)]
     risk_vec = y_true[ind_risk] != y_pred[ind_risk]
-    risk_triang[i, :(i+1)] = np.cumsum(risk_vec)
+    risk_triang[i, :(i+1)] = np.cumsum(risk_vec).astype(np.uint16)
   
-  argmin_risk = np.nanargmin(risk_triang, axis=0)
-  min_risk = np.nanmin(risk_triang, axis=0)
+  argmin_risk = np.argmin(risk_triang, axis=0)
+  min_risk = np.min(risk_triang, axis=0)
   
   results = np.zeros((3, n))
-  results[0, :] = np.divide(min_risk, np.arange(1, n+1).astype(float))
-  results[1, :] = conf_2_sorted[argmin_risk.astype(int)]
-  results[2, :] = conf_1_sorted[indices_triang[[argmin_risk.astype(int), 
+  results[0, :] = np.divide(min_risk.astype(float), 
+         np.arange(1, n+1).astype(float))
+  results[2, :] = conf_2_sorted[argmin_risk.astype(int)]
+  results[1, :] = conf_1_sorted[indices_triang[[argmin_risk.astype(int), 
          np.arange(n)]].astype(int)]
   
   return results
@@ -693,11 +859,11 @@ def calibration(y, p_mean, num_bins=10):
          'mce': mce}
   return cal
 
-#%% launch functions
+#%% Launch functions
 
 def main(argv):
   del argv
-  dataset = 'cifar100-first-100'
+  dataset = 'imagenet-first-1000'
 
   if dataset.startswith('imagenet'):
     y = np.load('saved_models/{}/y.npy'.format(dataset))
@@ -705,23 +871,20 @@ def main(argv):
     npzfile = np.load('saved_models/{}/y.npz'.format(dataset))
     y = npzfile['y_test_in']
     
-  h5file = 'D:/outputs/last_layer/mnist-first-10_sgdsgld_lr-0.01_bs-32_s-1000/p_sgd_in.h5'
-  h5file = 'D:/outputs/last_layer/cifar100-first-100_sgdsgld_lr-0.001_bs-128_s-1000/p_sgd_in.h5'
+#  h5file_sgd = 'outputs/last_layer/imagenet-first-1000_nbll-1_sgdsgld_lr-0.1_bs-512_s-10/p_sgd_in.h5'
+#  h5file_sgld = 'outputs/last_layer/imagenet-first-1000_nbll-1_sgdsgld_lr-0.1_bs-512_s-10/p_sgld_in.h5'
+#  h5file_d = 'outputs/last_layer/imagenet-first-1000_nbll-3_dropout_ep-2_lr-0.01_bs-512_s-2_pdrop-0.1/p_in.h5'
   
-#  path = 'outputs/full_network/{}_sgdsgld_lr-0.01_bs-32_s-1000'.format(dataset)
-#  p = os.path.join(path, 'p_sgld_in.h5')
-#  save_results(metrics_from_h5file(y, p), path, dic_name='metrics_sgld.pkl')
-#  p = os.path.join(path, 'p_sgd_in.h5')
-#  save_results(metrics_from_h5file(y, p), path, dic_name='metrics_sgd.pkl')
-
-  path = 'outputs/last_layer/{}_onepoint'.format(dataset)
-  h5file_in = os.path.join(path, 'p_in.h5')
-  h5file_out = os.path.join(path, 'p_out.h5')
-  save_results(metrics_ood_from_h5files(h5file_in, h5file_out), path)
-
-#  path = 'outputs/full_network/{}_dropout_ep-100_lr-0.005_bs-32_s-1000_pdrop-0.1'.format(dataset)
-#  p = os.path.join(path, 'p_in.h5')
-#  save_results(metrics_from_h5file(y, p), path)
+  for i in [1, 2, 3]:
+    h5file = 'outputs/last_layer/imagenet-first-1000_nbll-{}_onepoint/p_in.h5'.format(i)
+    path = '/'.join(h5file.split('/')[:-1])
+    save_results(metrics_from_h5file(y, h5file), path)
+  
+#  for h5file, dic_name in zip([h5file_sgd, h5file_sgld, h5file_d],
+#                              ['metric_sgd.pkl', 'metrics_sgld.pkl', 
+#                               'metrics_dropout.pkl']):
+#    path = '/'.join(h5file.split('/')[:-1])
+#    save_results(metrics_from_h5file(y, h5file), path, dic_name=dic_name)
 
   print('End')
 
